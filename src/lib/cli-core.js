@@ -1,3 +1,4 @@
+import { ensureToken, STATE_DIR, PID_FILE as BRIDGE_PID_FILE, TOKEN_FILE as BRIDGE_TOKEN_FILE } from './bridge-state.js';
 // Shared CLI core: daemon plumbing, figma eval helpers, config, program.
 // Extracted from index.js — all command modules import from here.
 import { Command } from 'commander';
@@ -188,17 +189,11 @@ function buildNodeSelector(options, { filterExpr = '' } = {}) {
 
 // Daemon configuration
 const DAEMON_PORT = 3456;
-const DAEMON_PID_FILE = join(homedir(), '.figma-cli-daemon.pid');
-const DAEMON_TOKEN_FILE = join(homedir(), '.figma-ds-cli', '.daemon-token');
+const DAEMON_PID_FILE = BRIDGE_PID_FILE;
+const DAEMON_TOKEN_FILE = BRIDGE_TOKEN_FILE;
 
 // Generate and save a new session token for daemon authentication
-function generateDaemonToken() {
-  const configDir = join(homedir(), '.figma-ds-cli');
-  if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
-  const token = randomBytes(32).toString('hex');
-  writeFileSync(DAEMON_TOKEN_FILE, token, { mode: 0o600 });
-  return token;
-}
+function generateDaemonToken() { return ensureToken(); }
 
 // Read the current daemon session token
 function getDaemonToken() {
@@ -211,7 +206,7 @@ function getDaemonToken() {
 
 // Get detailed token status for debugging
 function getTokenStatus() {
-  const configDir = join(homedir(), '.figma-ds-cli');
+  const configDir = STATE_DIR;
   const tokenPath = DAEMON_TOKEN_FILE;
   const status = {
     configDir,
@@ -517,7 +512,8 @@ function startDaemon(forceRestart = false, mode = 'auto') {
   const newToken = generateDaemonToken();
 
   const daemonScript = join(__dirname, 'daemon.js');
-  const child = spawn('node', [daemonScript], {
+  const child = spawn(process.execPath, [daemonScript], {
+    windowsHide: true,
     detached: true,
     stdio: 'ignore',
     env: { ...process.env, DAEMON_PORT: String(DAEMON_PORT), DAEMON_MODE: mode }

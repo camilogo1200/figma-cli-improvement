@@ -1,233 +1,816 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: Inter, -apple-system, sans-serif;
-      font-size: 11px;
-      background: #2c2c2c;
-      color: #fff;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      padding: 10px 12px;
-      gap: 4px;
-    }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #666;
-    }
-    .dot.connecting { background: #f59e0b; animation: pulse 1s infinite; }
-    .dot.connected { background: #22c55e; }
-    .dot.error { background: #ef4444; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-    .title { font-weight: 600; font-size: 12px; }
-    #status { color: #aaa; }
-    .hint { font-size: 9px; color: #666; margin-top: 2px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Insula · Worker console</title>
+<style>
+:root { color-scheme:light; --bg:#f2f2f7; --card:#fff; --ink:#1c1c1e; --muted:#636366; --line:#d1d1d6; --blue:#0066cc; --green:#237b45; --red:#b82b23; --wash:#e8f1ff; --orange:#8d5700; }
+.figma-dark { color-scheme:dark; --bg:#1c1c1e; --card:#2c2c2e; --ink:#f2f2f7; --muted:#aeaeb2; --line:#48484a; --blue:#64adff; --green:#7bdb98; --red:#ff9b93; --wash:#23354c; --orange:#ffca80; }
+* { box-sizing:border-box; }
+body { margin:0; font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); font-variant-numeric:tabular-nums; }
+button,select { font:inherit; color:inherit; cursor:pointer; }
+input { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px; min-width:0; width:100%; }
+.zone-map { width:100%; height:180px; background:var(--bg); border:1px solid var(--line); border-radius:8px; margin:10px 0; }
+.zone-map rect { fill:var(--wash); stroke:var(--blue); stroke-width:2; vector-effect:non-scaling-stroke; }.zone-map rect.held { stroke:var(--red); }.zone-map text { fill:var(--ink); }
+button,select { border:1px solid var(--line); background:var(--card); border-radius:7px; min-height:28px; padding:3px 9px; }
+button:hover { background:var(--wash); }
+button:disabled { cursor:default; opacity:.55; }
+:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+[hidden] { display:none!important; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:14px; letter-spacing:-.3px; }
+h2 { font-size:17px; letter-spacing:-.3px; }
+h3 { font-size:12px; font-weight:600; }
+small,.muted { color:var(--muted); }
+small { font-size:11px; }
+.top { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--line); background:var(--card); }
+.mark { width:30px; height:30px; display:grid; place-items:center; border-radius:9px; background:var(--wash); color:var(--blue); flex:none; }
+.brand { flex:1; min-width:0; }
+.sub { display:flex; align-items:center; gap:5px; min-width:0; }
+#status { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--muted); flex:none; }
+.dot.connected { background:var(--blue); }.dot.error { background:var(--red); }.dot.connecting { background:var(--orange); }
+.view { display:flex; align-items:center; gap:4px; font-size:11px; }
+.view select { max-width:92px; }
+.layout { display:grid; grid-template-columns:156px minmax(0,1fr); min-height:calc(100vh - 65px); }
+nav { border-right:1px solid var(--line); padding:18px 10px; }
+nav .nav-label { padding:0 9px 8px; font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); }
+nav button { display:block; border:0; background:transparent; text-align:left; width:100%; margin-bottom:3px; }
+nav button[aria-pressed="true"] { background:var(--wash); color:var(--blue); font-weight:600; }
+.nav-foot { margin:22px 9px; font-size:11px; color:var(--muted); }
+main { padding:22px; min-width:0; }
+.heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:16px; }
+.tag { color:var(--blue); background:var(--wash); padding:3px 7px; border-radius:5px; font-size:10px; font-weight:600; white-space:nowrap; }
+.grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:14px; align-items:start; }
+.stack { display:grid; gap:14px; min-width:0; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:15px; min-width:0; }
+.card-head { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:13px; }
+.source { color:var(--muted); font-size:10px; font-weight:400; }
+.metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:16px; }
+.metric { padding:12px; }.metric strong { display:block; font-size:23px; font-weight:600; letter-spacing:-.7px; }.metric small { display:block; }
+.line { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:8px 0; border-bottom:1px solid var(--line); }
+.line:last-child { border:0; padding-bottom:0; }.line:first-child { padding-top:0; }
+.line>span:first-child { color:var(--muted); flex-shrink:0; }.line>span:last-child { text-align:right; overflow-wrap:anywhere; }
+.job-name { font-size:21px; letter-spacing:-.5px; font-weight:600; margin-bottom:3px; }
+.id { font:10px/1.6 ui-monospace,Consolas,monospace; overflow-wrap:anywhere; color:var(--muted); }
+progress { width:100%; height:6px; border:0; border-radius:3px; overflow:hidden; appearance:none; background:var(--line); accent-color:var(--blue); margin:14px 0 6px; }
+progress::-webkit-progress-bar { background:var(--line); } progress::-webkit-progress-value { background:var(--blue); }
+.progress-note { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:11px; }
+.actions { display:flex; align-items:center; gap:10px; margin-top:14px; }.danger { color:var(--red); }
+.empty { padding:16px 0; color:var(--muted); }
+.notice { border-left:3px solid var(--blue); padding:10px 12px; background:var(--wash); margin:0 0 16px; border-radius:5px; }
+.notice.error { border-color:var(--red); background:var(--card); }.notice b { display:block; color:var(--red); }
+.event { padding:10px 0; border-bottom:1px solid var(--line); }.event:last-child { border:0; padding-bottom:0; }
+.event-title { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:3px; }
+.outcome { font-size:10px; font-weight:600; color:var(--blue); }.outcome.issue { color:var(--orange); }.outcome.uncertain { color:var(--red); }
+.reason { color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+.foot { margin-top:18px; color:var(--muted); font-size:10px; }
+#compact { padding:12px; height:100vh; overflow-y:auto; flex:none; }
+.compact-head { display:flex; align-items:center; gap:7px; margin-bottom:10px; }.compact-head .mark { display:grid; width:24px; height:24px; border-radius:7px; }.compact-head b { font-size:12px; }.compact-head .compact-live { flex:1; color:var(--muted); font-size:9px; }.compact-head button { font-size:10px; min-height:28px; border-color:color-mix(in srgb,var(--indigo) 30%,var(--line)); color:var(--indigo); }
+.compact-focus { padding:14px; border-radius:14px; color:var(--hero-ink); background:radial-gradient(ellipse at 100% 0,#2a72bb 0,transparent 65%),linear-gradient(120deg,#172e4f,#184b82); }
+.compact-focus.attention { background:var(--hero-bg); color:var(--hero-ink); border:1px solid var(--hero-ring); position:relative; overflow:hidden; }
+.compact-focus.attention .eyebrow { color:var(--hero-detail); }.compact-focus.attention h2 { font-size:19px; }.compact-focus.attention p { color:var(--hero-muted); }.compact-focus.attention .compact-job-meta { color:var(--hero-muted); border-color:var(--hero-line); }.compact-focus.attention .compact-job-meta span:last-child { color:var(--hero-detail); font-weight:600; }
+@keyframes alert-beacon { 50% { box-shadow:0 0 0 10px var(--hero-halo-end); } }
+.compact-head button.compact-review { color:var(--action-ink); background:var(--action-bg); border-color:var(--action-bg); font-weight:600; }
+.attention-panel .attention-body { min-width:0; flex:1; }.attention-panel .eyebrow { color:var(--hero-detail); }.attention-panel .hero-chips { margin-top:12px; }.attention-panel .hero-chips span { display:inline-flex; align-items:center; gap:5px; }.attention-panel .hero-chips .ic { width:12px; height:12px; }
+.attention-panel .attention-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; }.attention-panel button { background:var(--hero-chip-bg); color:var(--hero-ink); border-color:var(--hero-line); font-weight:600; font-size:11px; padding:6px 10px; }.attention-panel button:first-child { background:var(--hero-button-bg); color:var(--hero-button-ink); border-color:var(--hero-button-bg); }.attention-panel button:hover,.compact-head button.compact-review:hover { filter:brightness(.92); }.attention-panel button:focus-visible { outline-color:var(--hero-accent); }
+.attention-graphic { flex:none; border-radius:50%; box-shadow:0 0 0 5px var(--hero-halo); animation:alert-beacon 2s ease-out 2; }.attention-graphic .orbit .ring-track { stroke:var(--hero-ring); }.attention-graphic .orbit-value b { color:var(--hero-ink); }
+.compact-attention-graphic .orbit { width:64px; height:64px; }.compact-attention-graphic .orbit-value b { font-size:21px; }.compact-attention-graphic .orbit-value small { font-size:8px; margin-top:3px; }
+@media(max-width:420px) { .attention-panel.console-hero { position:relative; align-items:flex-start; }.attention-panel .attention-body { width:100%; }.attention-panel .eyebrow,.attention-panel h3 { padding-right:74px; }.attention-panel .attention-graphic { position:absolute; right:16px; top:18px; }.attention-graphic .orbit { width:62px; height:62px; }.attention-graphic .orbit-value b { font-size:21px; }.attention-graphic .orbit-value small { font-size:7px; margin-top:3px; } }
+.compact-focus-top { display:flex; align-items:center; gap:14px; }.compact-copy { flex:1; min-width:0; }.compact-copy .eyebrow { color:var(--hero-muted); font-size:8px; letter-spacing:.09em; }.compact-copy h2 { font-size:18px; line-height:1.25; margin:5px 0 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.compact-copy p { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--hero-muted); }.compact-copy p span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.compact-copy .ic { width:12px; height:12px; color:var(--hero-detail); }
+.compact-orbit { flex:none; width:64px; height:64px; position:relative; }.compact-orbit>svg { width:100%; height:100%; transform:rotate(-90deg); }.compact-orbit circle { fill:none; stroke-width:5; }.compact-orbit .ring-track { stroke:var(--hero-track); }.compact-orbit .ring-progress { stroke:var(--hero-accent); stroke-linecap:round; stroke-dasharray:var(--value) 100; transition:stroke-dasharray .1s linear; }.compact-orbit .ring-unmeasured { stroke:var(--hero-accent); stroke-dasharray:3 7; animation:compact-spin 12s linear infinite; transform-origin:center; }.compact-orbit .orbit-value b { font-size:18px; }.compact-orbit .orbit-value small { margin-top:3px; font-size:8px; }.compact-orbit .orbit-value .ic { width:23px; height:23px; color:var(--hero-detail); }.compact-focus.attention .orbit-value .ic { color:var(--hero-detail); }
+@keyframes compact-spin { to { transform:rotate(360deg); } }
+.compact-job-meta { display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--hero-line); padding-top:9px; margin-top:11px; color:var(--hero-muted); font-size:9px; }.compact-job-meta span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.compact-job-meta span:last-child { flex:none; color:var(--hero-detail); }
+.compact-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; margin-top:10px; }.compact-stat { background:color-mix(in srgb,var(--accent) 8%,var(--card)); border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line)); border-radius:10px; padding:8px; min-width:0; }.compact-stat>div { display:flex; align-items:center; gap:5px; color:var(--accent); }.compact-stat strong { font-size:21px; line-height:1.1; letter-spacing:-.5px; }.compact-stat .ic { width:13px; height:13px; }.compact-stat small { display:block; margin-top:3px; font-size:9px; white-space:nowrap; }
+.compact-network { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-top:11px; min-height:16px; font-size:9px; color:var(--muted); }.compact-network>span { display:flex; gap:5px; align-items:center; }.compact-worker { width:7px; height:13px; border-radius:3px; background:var(--line); }.compact-worker.running { background:var(--cyan); animation:compact-signal 2s ease-in-out infinite alternate; }.compact-worker.ready { background:var(--indigo); opacity:.6; }.compact-worker.held { background:var(--red); }.compact-network .compact-capacity { white-space:nowrap; }.compact-caption { margin-top:4px; font-size:9px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@keyframes compact-signal { to { opacity:.5; } }
+body[data-mode="compact"]>.top,body[data-mode="compact"]>.layout,body[data-mode="compact"]>#preview-label { display:none; }
+body:not([data-mode="compact"])>#compact { display:none; }
+#preview-label { padding:5px 12px; color:var(--orange); background:var(--card); border-bottom:1px solid var(--line); font-size:10px; }
+@media(max-width:700px) { .layout { display:block; } nav { padding:8px 12px; display:flex; overflow-x:auto; gap:3px; border-right:0; border-bottom:1px solid var(--line); } nav button { width:auto; white-space:nowrap; margin:0; min-height:30px; } .nav-label,.nav-foot { display:none; } main { padding:14px 12px; } .grid { grid-template-columns:1fr; } .metrics { gap:6px; }.metric { padding:9px; }.metric strong { font-size:20px; }.top { gap:8px; }.mark { display:none; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+@media(max-width:700px) { nav { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:visible; } nav button { width:100%; text-align:center; font-size:11px; } }
+@media(prefers-contrast:more) { :root { --muted:#35353b; --line:#75757b; }.figma-dark { --muted:#e0e0e7; --line:#a0a0aa; } }
+/* The proposal's visual system, driven by measured coordinator snapshots. */
+:root { --indigo:#3f64a6; --teal:#356b87; --slate:#626c7c; --azure:#0877a8; --fill:rgba(120,120,128,.1); }
+.figma-dark { --indigo:#9bbbf0; --teal:#90c3de; --slate:#b0b9c7; --azure:#70c5ef; }
+body { -webkit-font-smoothing:antialiased; line-height:1.4; }
+.top { padding:10px 14px; background:color-mix(in srgb,var(--card) 88%,transparent); backdrop-filter:blur(18px); }
+.mark { background:linear-gradient(140deg,var(--indigo),var(--blue)); color:white; width:26px; height:26px; border-radius:7px; }
+.layout { grid-template-columns:164px minmax(0,1fr); } main { padding:16px; }
+nav { background:color-mix(in srgb,var(--card) 35%,var(--bg)); padding:12px 8px; }
+nav button { display:flex; gap:8px; align-items:center; min-height:32px; font-size:12px; }
+.ic { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+nav .ic { color:var(--blue); }.card { border:0; box-shadow:0 0 0 .5px var(--line); border-radius:11px; }
+.heading { margin-bottom:14px; } h2 { font-size:19px; }.tag { border-radius:20px; }
+.metrics { grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+.metric { position:relative; padding:12px; overflow:hidden; }.metric strong { font-size:25px; margin:4px 0 3px; }
+.metric .metric-label { display:flex; gap:5px; align-items:center; color:var(--muted); font-size:11px; }.metric .ic { color:var(--accent,var(--blue)); }
+.spark { display:block; width:100%; height:28px; margin-top:7px; color:var(--accent,var(--blue)); }
+.visual-stack { display:grid; gap:14px; }.visual-columns { display:grid; grid-template-columns:1.05fr 1fr; gap:14px; align-items:start; }
+.group-title { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 2px 7px; }
+.group-title small { margin-left:auto; text-transform:none; letter-spacing:0; font-size:10px; font-weight:400; }
+.worker-card { background:var(--card); border-radius:11px; box-shadow:0 0 0 .5px var(--line); overflow:hidden; margin-bottom:10px; }
+.worker-head { display:flex; gap:8px; align-items:center; padding:11px; border-bottom:1px solid var(--line); }
+.worker-icon { display:grid; place-items:center; width:29px; height:29px; border-radius:8px; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); flex:none; }
+.worker-title { flex:1; min-width:0; }.worker-title b { font-size:12px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.worker-title small { display:block; font-size:10px; }
+.state-pill { display:inline-flex; align-items:center; gap:5px; border-radius:20px; padding:3px 7px; font-size:9px; font-weight:600; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); white-space:nowrap; }
+.live-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.live-dot.running { animation:signal-pulse 2s ease-out infinite; }
+@keyframes signal-pulse { 0% { box-shadow:0 0 0 0 currentColor; } 70%,100% { box-shadow:0 0 0 5px transparent; } }
+.visual-lane { padding:10px 11px; border-left:3px solid var(--accent); margin:0 0 0 8px; border-bottom:.5px solid var(--line); }
+.lane-heading { display:flex; gap:7px; align-items:center; justify-content:space-between; }.lane-heading b { font-size:11px; overflow-wrap:anywhere; }
+.lane-sub { font-size:10px; color:var(--muted); margin-top:3px; overflow-wrap:anywhere; }.lane-meta { display:flex; justify-content:space-between; gap:6px; font-size:9px; color:var(--muted); margin-top:5px; }
+.lane-cancel { min-height:22px; font-size:10px; padding:1px 6px; }
+.vbar { height:4px; background:var(--fill); border-radius:3px; overflow:hidden; margin-top:7px; }.vbar>i { display:block; height:100%; background:var(--accent); border-radius:3px; width:100%; transform:scaleX(var(--value)); transform-origin:left; transition:transform .1s linear; }
+.worker-foot { display:flex; justify-content:space-between; gap:8px; padding:8px 11px; font-size:9px; color:var(--muted); }
+.thread-chips { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }.thread-chip { display:flex; align-items:center; gap:5px; border-radius:20px; background:var(--card); padding:5px 8px; font-size:10px; color:var(--muted); box-shadow:0 0 0 .5px var(--line); }.thread-chip i { width:7px; height:7px; border-radius:2px; background:var(--accent); }
+.timeline-card { padding:12px; }.time-row { display:grid; grid-template-columns:95px minmax(0,1fr); gap:8px; margin:8px 0; align-items:center; font-size:10px; }.time-row>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }.time-track { background:var(--fill); border-radius:4px; height:11px; position:relative; overflow:hidden; }.time-track i { position:absolute; height:100%; min-width:2px; background:var(--accent); border-radius:3px; }.time-track i.running { background:repeating-linear-gradient(120deg,var(--accent) 0 5px,color-mix(in srgb,var(--accent) 55%,transparent) 5px 9px); background-size:18px 100%; animation:flow 1.4s linear infinite; }@keyframes flow { to { background-position:18px 0; } }
+.time-axis { margin-left:103px; display:flex; justify-content:space-between; color:var(--muted); font-size:9px; padding-top:3px; }
+.map-card { padding:12px; }.map-toolbar { display:flex; gap:6px; align-items:center; margin-bottom:9px; }.map-toolbar label { color:var(--muted); font-size:10px; }.map-toolbar select { width:100%; min-width:0; font-size:10px; }
+.canvas-map { width:100%; height:226px; background:var(--fill); border-radius:8px; display:block; }.canvas-map.full { height:340px; }
+.canvas-map .zone-border { stroke-width:1.5; vector-effect:non-scaling-stroke; }.canvas-map .zone-active { stroke-dasharray:5 4; animation:zone-march 1s linear infinite; }@keyframes zone-march { to { stroke-dashoffset:-9; } }
+.map-legend { display:grid; gap:0; margin-top:8px; }.map-legend .legend-row { display:flex; align-items:center; gap:7px; padding:7px 0; border-bottom:.5px solid var(--line); font-size:10px; }.legend-row>i { width:9px; height:9px; border-radius:3px; background:var(--accent); flex:none; }.legend-row>span { flex:1; }.legend-row small { font-size:9px; display:block; }.legend-row em { font-style:normal; font-size:9px; color:var(--muted); }
+.resource-tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }.resource-tile { background:var(--card); padding:14px; border-radius:11px; box-shadow:0 0 0 .5px var(--line); }.resource-tile b { display:block; font-size:24px; letter-spacing:-.5px; margin:5px 0; }.resource-tile b small { font-size:11px; font-weight:400; margin-left:4px; }
+.telemetry-note { display:flex; gap:7px; align-items:flex-start; color:var(--muted); font-size:10px; margin-top:10px; }.telemetry-note .ic { color:var(--blue); }
+body[data-hidden="true"] *,body[data-hidden="true"] *::before { animation-play-state:paused!important; }
+@media(max-width:700px) { .visual-columns { grid-template-columns:1fr; }.metrics { grid-template-columns:1fr 1fr; }.metric strong { font-size:23px; } main { padding:12px; } nav { grid-template-columns:repeat(4,minmax(0,1fr)); } nav button { justify-content:center; font-size:10px; gap:4px; } nav .ic { width:12px; height:12px; }.canvas-map.full { height:260px; } }
+@media(prefers-reduced-motion:reduce) { .live-dot.running,.vbar>i,.time-track i.running,.canvas-map .zone-active { animation:none!important; transition:none!important; } }
+/* Keep navigation in place while dense worker lists scroll. */
+body { height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.top,#preview-label { flex:none; }
+.layout { min-height:0; flex:1; overflow:hidden; }
+.layout>nav,.layout>main { overflow-y:auto; }
+.canvas-map { background-color:var(--fill); background-image:radial-gradient(var(--line) .7px,transparent .7px); background-size:12px 12px; }
+@media(max-width:700px) { .layout { display:flex; flex-direction:column; }.layout>nav { flex:none; }.layout>main { flex:1; } }
+/* iOS-inspired blue accents and grouped gray surfaces; warnings keep semantic colors. */
+:root { --cyan:#0066cc; --queue-accent:#737d8c; --vivid-cyan:#8dccff; }
+.figma-dark { --cyan:#64adff; --queue-accent:#b0b9c7; }
+.console-hero { display:flex; gap:22px; align-items:center; justify-content:space-between; padding:22px; margin-bottom:16px; border-radius:16px; color:var(--hero-ink); background:radial-gradient(ellipse at 100% 0,#2a72bb 0,transparent 60%),linear-gradient(120deg,#172e4f,#184b82); position:relative; overflow:hidden; }
+.console-hero.activity-hero { background:radial-gradient(ellipse at 100% 0,#366a9a 0,transparent 60%),linear-gradient(120deg,#24364d,#274e75); }
+.console-hero h3 { font-size:23px; letter-spacing:-.5px; margin:6px 0; }.console-hero p { color:var(--hero-muted); font-size:11px; max-width:380px; }.eyebrow { display:flex; align-items:center; gap:6px; text-transform:uppercase; letter-spacing:.1em; font-size:9px; font-weight:600; }.eyebrow .ic { color:var(--vivid-cyan); }
+.hero-chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:14px; }.hero-chips span { border:1px solid var(--hero-line); background:var(--hero-chip-bg); padding:5px 8px; border-radius:6px; color:var(--hero-ink); font-size:10px; }.hero-chips b { margin-right:4px; }
+.orbit { flex:none; width:112px; height:112px; position:relative; }.orbit svg { width:100%; height:100%; transform:rotate(-90deg); overflow:visible; }.orbit circle { fill:none; stroke-width:8; }.orbit .ring-track { stroke:var(--hero-track); }.orbit-value { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; }.orbit-value b { font-size:29px; line-height:1; }.orbit-value small { color:var(--hero-muted); font-size:9px; margin-top:6px; }
+.ring-segment { animation:ring-enter .65s ease-out; }@keyframes ring-enter { from { stroke-dasharray:0 100; } }
+.dispatch-stages { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:18px; }.stage-card { background:var(--card); padding:13px; border-radius:12px; box-shadow:0 0 0 .5px var(--line); border-top:3px solid var(--accent); }.stage-card>span { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted); }.stage-card .ic { color:var(--accent); }.stage-card b { font-size:27px; display:block; color:var(--accent); margin:6px 0 2px; }.stage-card small { font-size:10px; }
+.dispatch-board { display:grid; gap:12px; }.dispatch-worker { background:var(--card); border:1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); border-radius:13px; overflow:hidden; }.dispatch-worker>.worker-head { background:color-mix(in srgb,var(--accent) 7%,var(--card)); }.dispatch-route { padding:13px; display:grid; grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr); gap:10px; align-items:start; }.route-connector { align-self:center; color:var(--accent); }.route-connector svg { width:100%; height:40px; }.route-connector path { stroke:currentColor; stroke-width:2; fill:none; }.route-connector.running path { stroke-dasharray:4 4; animation:zone-march .9s linear infinite; }
+.dispatch-slot { border-radius:9px; padding:11px; background:color-mix(in srgb,var(--accent) 8%,var(--bg)); border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line)); overflow-wrap:anywhere; }.dispatch-slot h3 { margin:7px 0 4px; font-size:13px; }.slot-label { display:flex; align-items:center; gap:5px; font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--accent); }.queue-tickets { display:grid; gap:7px; }.queue-ticket { background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:8px; padding:9px; }.queue-ticket b { font-size:11px; }.queue-ticket .lane-meta { margin-bottom:4px; }.queue-ticket .tag { color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,transparent); white-space:normal; }
+.empty-illustration { display:flex; align-items:center; gap:10px; padding:15px; color:var(--muted); font-size:11px; }.empty-illustration>.ic { width:26px; height:26px; color:var(--accent,var(--indigo)); }.empty-illustration b { display:block; color:var(--ink); font-size:12px; margin-bottom:3px; }
+.activity-toolbar { display:flex; justify-content:space-between; gap:10px; align-items:center; margin:18px 0 12px; }.activity-toolbar h3 { font-size:13px; }.activity-toolbar label { color:var(--muted); font-size:10px; }.activity-toolbar select { margin-left:4px; }.activity-legend { display:flex; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:10px; margin:10px 0 16px; }.activity-legend span { display:flex; gap:5px; align-items:center; }.activity-legend i { width:8px; height:8px; border-radius:3px; background:var(--accent); }
+.activity-stream { display:grid; gap:9px; }.activity-entry { position:relative; display:grid; grid-template-columns:30px minmax(0,1fr); gap:11px; }.activity-entry::before { content:''; position:absolute; left:14px; top:32px; bottom:-10px; width:1px; background:var(--line); }.activity-entry:last-child::before { display:none; }.event-symbol { width:30px; height:30px; display:grid; place-items:center; border-radius:50%; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,var(--card)); border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line)); margin-top:11px; }
+.activity-entry .event { padding:13px; border:1px solid var(--line); border-radius:11px; background:var(--card); }.activity-entry .event-title { margin:0 0 7px; }.activity-entry .event-title b { font-size:13px; }.event-context { display:flex; flex-wrap:wrap; gap:7px; font-size:10px; color:var(--muted); margin-bottom:9px; }.event-context span { border-radius:4px; background:var(--fill); padding:2px 5px; }.event-latency { display:flex; height:6px; gap:2px; border-radius:3px; overflow:hidden; margin:8px 0 5px; background:var(--fill); }.event-latency i { background:var(--accent); min-width:0; }.event-latency i:first-child { background:var(--queue-accent); }.event-timings { display:flex; flex-wrap:wrap; gap:10px; font-size:9px; color:var(--muted); }.event-timings b { color:var(--ink); font-weight:500; }.event-measure { margin-top:9px; font-size:10px; padding:7px 9px; background:color-mix(in srgb,var(--cyan) 7%,var(--card)); border-radius:6px; color:var(--muted); }.event-id { margin-top:8px; font:9px ui-monospace,Consolas,monospace; color:var(--muted); overflow-wrap:anywhere; }
+.entry-new { animation:entry-arrive .4s ease-out; }@keyframes entry-arrive { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:translateY(0); } }
+.panel:not([hidden]) .console-hero,.panel:not([hidden]) .stage-card { animation:entry-arrive .35s ease-out; }
+.resource-tile { border-top:3px solid var(--accent); background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 8%,var(--card)),var(--card) 65%); }.resource-tile b { color:var(--accent); }.resource-tile .spark { height:52px; }.resource-tile .resource-caption { display:flex; justify-content:space-between; font-size:9px; color:var(--muted); margin-top:8px; }
+.spark-line { transition:d .35s ease-out; }
+.spark-end { animation:sample-arrive .7s ease-out; }@keyframes sample-arrive { from { opacity:.3; } to { opacity:1; } }
+.event-latency i:last-child { background:var(--cyan); }
+.canvas-map g { animation:sample-arrive .5s ease-out; }.time-track i:not(.running) { animation:sample-arrive .5s ease-out; }
+@media(max-width:700px) { .console-hero { padding:16px; gap:10px; }.console-hero h3 { font-size:21px; }.orbit { width:86px; height:86px; }.orbit-value b { font-size:24px; }.dispatch-stages { gap:7px; }.stage-card { padding:10px; }.stage-card b { font-size:23px; }.dispatch-route { grid-template-columns:1fr; }.route-connector { display:none; }.activity-entry { grid-template-columns:24px minmax(0,1fr); gap:8px; }.event-symbol { width:24px; height:24px; }.activity-entry::before { left:11px; }.activity-entry .event { padding:10px; } }
+@media(prefers-contrast:more) { .dispatch-slot,.queue-ticket,.activity-entry .event,.resource-tile { border:1px solid var(--ink); } }
+/* Neutral application chrome; chart colors identify data, never whole surfaces. */
+:root { --chart-blue:#007aff; --chart-purple:#9841cb; --chart-cyan:#00879c; --chart-green:#248a3d; --chart-orange:#b56800; }
+.figma-dark { --chart-blue:#64b0ff; --chart-purple:#cf9dff; --chart-cyan:#58d3e0; --chart-green:#73d991; --chart-orange:#ffbc66; }
+.card,.worker-card,.resource-tile,.stage-card { border:1px solid var(--line); box-shadow:none; border-radius:12px; }
+.card.metric { border-top:3px solid var(--accent); }.resource-tile,.stage-card { border-top:3px solid var(--accent); }
+.resource-tile b,.stage-card b { color:var(--ink); }.resource-tile { background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 5%,var(--card)),var(--card) 65%); }
+.dispatch-worker { border-color:var(--line); }.dispatch-worker>.worker-head { background:var(--card); border-top:3px solid var(--accent); }
+.dispatch-slot { background:color-mix(in srgb,var(--accent) 5%,var(--bg)); }.worker-icon { background:color-mix(in srgb,var(--accent) 10%,var(--card)); }
+nav button[aria-pressed="true"] { box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--blue) 22%,var(--line)); }
+.console-hero { background:radial-gradient(ellipse at 100% 0,#31527a 0,transparent 65%),linear-gradient(120deg,#172331,#203650); }
+.console-hero.activity-hero { background:radial-gradient(ellipse at 100% 0,#34586d 0,transparent 65%),linear-gradient(120deg,#202a33,#233b4c); }
+.event-latency i:first-child { background:var(--chart-purple); }.event-latency i:last-child { background:var(--chart-blue); }
+.activity-entry.is-uncertain .event { border-color:color-mix(in srgb,var(--red) 50%,var(--line)); border-left:3px solid var(--red); background:color-mix(in srgb,var(--red) 4%,var(--card)); }
+@media(prefers-contrast:more) { .card,.worker-card,.resource-tile,.stage-card,.dispatch-worker { border-color:var(--ink); } }
+/* Presets change presentation only. Appearance still follows Figma light/dark. */
+body { --hero-ink:#fff; --hero-track:#ffffff20; --hero-line:#ffffff35; --hero-chip-bg:#ffffff0e; --hero-accent:#8dccff; --hero-muted:#e3e7fa; --hero-detail:#c4e3ff; --hero-ring:#8dccff80; --hero-halo:#8dccff0f; --hero-halo-end:#8dccff04; --hero-button-bg:#f5f9ff; --hero-button-ink:#172e4f; --hero-ok:#73d991; --hero-issue:#fbbf24; --hero-uncertain:#fb7185; --zone-held:var(--red); --panel-radius:16px; --action-bg:#17191c; --action-ink:#fff; --hero-bg:radial-gradient(ellipse at 100% 0,#31527a 0,transparent 65%),linear-gradient(120deg,#172331,#203650); --compact-bg:linear-gradient(120deg,#172e4f,#184b82); }
+.figma-dark body,body.figma-dark { --action-bg:#f2f2f7; --action-ink:#17191c; }
+body[data-theme="ios"] { --bg:#f1f3fa; --card:#fff; --line:#d1d8e5; --blue:#005fc9; --wash:#e6efff; --panel-radius:16px; --action-bg:#0066cc; --action-ink:#fff; --hero-bg:radial-gradient(ellipse at 100% 0,#3553a0 0,transparent 65%),linear-gradient(120deg,#112c52,#175895); --compact-bg:linear-gradient(120deg,#163972,#145da3); }
+.figma-dark body[data-theme="ios"],body.figma-dark[data-theme="ios"] { --bg:#171d2a; --card:#252e40; --line:#47556e; --blue:#78baff; --wash:#293e60; --action-bg:#78baff; --action-ink:#112139; }
+/* Signal: white workspace, graphite paint emphasis, vivid measured graphics. */
+body[data-theme="signal"] { --bg:#fafafa; --card:#fff; --ink:#0a0a0a; --muted:#4b4b4b; --line:#c4c4c4; --blue:#000; --wash:#f1f1f1; --panel-radius:12px; --action-bg:#000; --action-ink:#fff; --indigo:#292929; --teal:#444; --slate:#555; --azure:#222; --cyan:#000; --queue-accent:#8152c5; --vivid-cyan:#fff; --fill:#00000008; --chart-blue:#276ef1; --chart-purple:#8b4ad2; --chart-cyan:#087f8c; --chart-green:#12805c; --chart-orange:#ae6500; --hero-bg:#000; --compact-bg:#000; --hero-ink:#fff; --hero-accent:#6ca9ff; --hero-muted:#dedede; --hero-detail:#fff; --hero-track:#ffffff26; --hero-line:#ffffff4a; --hero-chip-bg:#ffffff0e; --hero-ring:#eee; --hero-halo:#ffffff0f; --hero-halo-end:#ffffff04; --hero-button-bg:#fff; --hero-button-ink:#000; --hero-ok:#54ce92; --hero-issue:#ffb957; --hero-uncertain:#ff7d8d; --zone-held:var(--red); --signal-warning:#ffc043; }
+.figma-dark body[data-theme="signal"],body.figma-dark[data-theme="signal"] { --bg:#111; --card:#242424; --ink:#fff; --muted:#d1d1d1; --line:#606060; --blue:#fff; --wash:#363636; --action-bg:#fff; --action-ink:#000; --indigo:#eee; --teal:#ddd; --slate:#bbb; --azure:#eee; --cyan:#fff; --queue-accent:#c39bff; --fill:#ffffff12; --chart-blue:#6ca9ff; --chart-purple:#c39bff; --chart-cyan:#44c4d4; --chart-green:#54ce92; --chart-orange:#ffb957; }
+body[data-theme="signal"] nav button[aria-pressed="true"] { background:var(--ink); color:var(--card); box-shadow:none; }
+body[data-theme="signal"] nav button[aria-pressed="true"] .ic { color:inherit; }
+body[data-theme="signal"] .mark { background:var(--ink); color:var(--card); }
+/* Opaque paint with a narrow clear-coat reflection along the top edge. */
+body[data-theme="signal"] { --paint-surface:radial-gradient(ellipse 65% 12px at 55% 0,#ffffffd9,transparent 78%),linear-gradient(180deg,#606060 0,#3a3a3a 7px,#292929 24px); --hero-bg:var(--paint-surface); --compact-bg:var(--paint-surface); --hero-muted:#f0f0f0; }
+body[data-theme="signal"] :is(.console-hero,.compact-focus,.card.metric,.notice,.activity-entry.is-uncertain .event) { background:var(--paint-surface); border:1px solid #595959; border-top-color:#ededed; box-shadow:inset 0 1px 0 #ffffffa6,inset 0 -1px 0 #ffffff0a; }
+body[data-theme="signal"] :is(.card.metric,.notice,.activity-entry.is-uncertain .event) { --ink:#fff; --muted:#f0f0f0; --line:#ffffff36; --card:#292929; --fill:#ffffff12; --blue:#8dccff; --chart-blue:#6ca9ff; --chart-purple:#c39bff; --chart-cyan:#44c4d4; --chart-green:#54ce92; --chart-orange:#ffb957; color:var(--ink); }
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more) {
+  body[data-theme="signal"] { --paint-surface:#171717; }
+  body[data-theme="signal"] :is(.console-hero,.compact-focus,.card.metric,.notice,.activity-entry.is-uncertain .event) { border-color:#999; box-shadow:none; }
+}
+body[data-theme="signal"] .dispatch-worker>.worker-head,body[data-theme="signal"] .stage-card { border-top-color:var(--line); }
+body[data-theme="signal"] .compact-stat { background:var(--card); border-color:var(--line); }body[data-theme="signal"] .compact-stat strong { color:var(--ink); }
+body[data-theme="signal"] .activity-entry.is-uncertain .event { --accent:var(--hero-uncertain); }
+body[data-theme="signal"] .resource-tile { background:var(--card); }
+body[data-theme="signal"] .event-latency i:first-child { background:repeating-linear-gradient(120deg,var(--chart-purple) 0 3px,var(--card) 3px 5px); }
+body[data-theme="signal"] .dot.connected,body[data-theme="signal"] .live-dot.running,body[data-theme="signal"] .compact-worker.running { background:var(--green); }
+body[data-theme="signal"] .attention-panel .eyebrow .ic,body[data-theme="signal"] .compact-focus.attention .eyebrow .ic { color:var(--signal-warning); }
+body[data-theme="signal"] .danger { color:var(--ink); }
+.card,.worker-card,.resource-tile,.stage-card,.dispatch-worker,.activity-entry .event,.console-hero,.compact-focus { border-radius:var(--panel-radius); }
+.console-hero,.console-hero.activity-hero { background:var(--hero-bg); }.compact-focus:not(.attention) { background:var(--compact-bg); }
+body[data-theme="ios"] .resource-tile { background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 10%,var(--card)),var(--card) 75%); }
+.appearance-controls { display:flex; gap:14px; align-items:center; }.theme-view select { max-width:130px; }.view { color:var(--muted); }.view select { color:var(--ink); }
+.compact-theme { flex:1; min-width:0; }.compact-theme select { max-width:140px; width:100%; font-size:10px; padding-left:7px; }.compact-head button { white-space:nowrap; }.compact-caption { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+@media(max-width:420px) { .top { flex-wrap:wrap; }.brand { flex-basis:100%; }.appearance-controls { width:100%; justify-content:space-between; } }
+@media(prefers-contrast:more) { body[data-theme] { --line:var(--muted); } }
+#pairing.connection-card { margin:12px; padding:22px; display:grid; gap:14px; max-width:520px; min-height:0; overflow-y:auto; flex:0 1 auto; }
+.connection-card h2 { font-size:23px; }.connection-icon { color:var(--blue); font-size:28px; }
+.connection-card .primary { background:var(--blue); color:var(--card); padding:10px 16px; font-weight:600; }
+.connection-card details { border-top:1px solid var(--line); padding-top:12px; }.connection-card summary,.connection-settings summary { cursor:pointer; }
+.connection-card details p,.connection-card details label { display:block; margin:10px 0; }.connection-card code { overflow-wrap:anywhere; }
+#connection-challenge { font-size:25px; letter-spacing:5px; font-weight:650; }
+.connection-settings { margin-bottom:12px; }.connection-settings p,.connection-settings button { margin:8px 8px 8px 0; }
+body[data-connection="setup"]>.layout,body[data-connection="setup"]>#compact { display:none; }
+</style>
 </head>
-<body>
-  <div class="title">Figma DS CLI</div>
-  <div class="row">
-    <div id="dot" class="dot connecting"></div>
-    <span id="status">Connecting...</span>
-  </div>
-  <div class="hint">Keep this window open</div>
-
-  <script>
-    // Scan ports 3456-3460 in PARALLEL for fast connection
-    const PORTS = [3456, 3457, 3458, 3459, 3460];
-    let ws = null;
-    let reconnectTimer = null;
-    let keepaliveTimer = null;
-    const statusEl = document.getElementById('status');
-    const dotEl = document.getElementById('dot');
-
-    function setStatus(text, state) {
-      statusEl.textContent = text;
-      dotEl.className = 'dot ' + state;
+<body data-mode="standard" data-theme="ios">
+<div id="preview-label" hidden>Preview · sample data · no connection to Figma</div>
+<header class="top">
+  <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg></div>
+  <div class="brand"><h1>Worker console</h1><div class="sub"><span id="dot" class="dot connecting"></span><span id="status" role="status">Connecting…</span></div></div>
+  <div class="appearance-controls"><label class="view theme-view">Theme <select id="ui-theme" aria-label="Color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><label class="view">View <select id="mode" aria-label="Window size"><option value="compact">Compact</option><option value="standard" selected>Standard</option><option value="console">Console</option></select></label></div>
+</header>
+<section id="pairing" class="notice connection-card" aria-labelledby="connection-title">
+  <div class="connection-icon" aria-hidden="true">↔</div><h2 id="connection-title">Connect this computer</h2>
+  <p id="connection-note" class="muted" role="status">Connect once. Insula will remember this computer when you reopen the plugin.</p>
+  <p id="connection-challenge" hidden></p>
+  <button id="connect-computer" class="primary">Connect this computer</button>
+  <details><summary>Advanced pairing &amp; setup</summary><p>If the companion is unavailable, install it once from the project folder:</p><code>node tools/figma-cli-insula/figma.mjs companion-install</code><p>For manual pairing, run <code>figma.mjs pair</code> with the project launcher and paste its two-minute code.</p><label>Pairing code <input id="pair-code" type="password" autocomplete="off" spellcheck="false" maxlength="24"></label><button id="pair">Use pairing code</button></details>
+</section>
+<section id="compact" aria-label="Compact worker dashboard"><div class="compact-head"><span class="mark" title="Insula" aria-label="Insula">i</span><label class="compact-theme"><span class="sr-only">Color theme</span><select id="compact-theme" aria-label="Compact color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><button id="details" title="Open the full worker console">Open console ↗</button></div><div id="compact-focus" class="compact-focus"></div><div id="compact-metrics" class="compact-metrics"></div><div id="compact-network" class="compact-network"></div><p class="compact-caption"><span id="compact-live">Connecting</span> · <span id="compact-caption"></span></p></section>
+<div class="layout">
+  <nav aria-label="Console sections"><div class="nav-label">Console</div><button data-tab="overview" data-icon="activity" aria-pressed="true">Overview</button><button data-tab="workers" data-icon="layers" aria-pressed="false">Workers</button><button data-tab="zones" data-icon="grid" aria-pressed="false">Zones</button><button data-tab="timeline" data-icon="timeline" aria-pressed="false">Timeline</button><button data-tab="queue" data-icon="cpu" aria-pressed="false">Dispatch</button><button data-tab="resources" data-icon="gauge" aria-pressed="false">Resources</button><button data-tab="activity" data-icon="list" aria-pressed="false">Activity</button><div class="nav-foot" id="sidebar-workers">One executor per file<br>Automatic task lanes</div></nav>
+  <main>
+    <details class="connection-settings"><summary>Connection settings</summary><p id="pairing-storage-note" class="muted">This computer reconnects automatically.</p><button id="forget">Forget this computer</button><small>Disconnects its open workers. Pair again next time.</small></details>
+    <div id="alert" class="console-hero attention-panel" role="status" hidden></div>
+    <div class="heading"><div><h2 id="section-title">Overview</h2><small id="identity">Waiting for worker identity</small></div><span class="tag" id="availability">Local worker</span></div>
+    <div id="overview" class="panel">
+      <div class="metrics"><div class="card metric" style="--accent:var(--chart-green)"><span class="metric-label" data-metric-icon="cpu">Running</span><strong id="active-count">-</strong><small id="worker-capacity">Across paired workers</small><div id="spark-active"></div></div><div class="card metric" style="--accent:var(--chart-blue)"><span class="metric-label" data-metric-icon="inbox">Admitted jobs</span><strong id="queue-count">-</strong><small>Active + waiting</small><div id="spark-jobs"></div></div><div class="card metric" style="--accent:var(--chart-orange)"><span class="metric-label" data-metric-icon="layers">Request data</span><strong id="queue-bytes">-</strong><small id="payload-budget">MiB / coordinator budget</small><div id="spark-bytes"></div></div><div class="card metric" style="--accent:var(--chart-purple)"><span class="metric-label" data-metric-icon="gauge">Daemon RSS</span><strong id="overview-memory">-</strong><small>MiB / Node process</small><div id="spark-memory"></div></div></div>
+      <div id="visual-overview" class="visual-stack"><div id="overview-threads" class="thread-chips"></div><div id="overview-timeline"></div><div class="visual-columns"><div><div class="group-title">Workers &amp; task lanes<small>Serial per file</small></div><div id="overview-workers"></div></div><div><div class="group-title">Reserved canvas<small>Page coordinates</small></div><div class="card map-card"><div class="map-toolbar"><label for="zone-page">Page</label><select id="zone-page" aria-label="Overview reservation page"></select></div><div id="overview-zones"></div></div></div></div></div>
+    </div>
+    <section id="workers" class="panel" hidden><div id="visual-workers"></div><div class="group-title">This plugin / local detail</div>
+      <div class="grid"><div class="stack"><section class="card"><div class="card-head"><h3>Current job</h3><span class="source">Plugin snapshot</span></div><div id="job"></div><div class="actions"><button id="cancel" class="danger" disabled>Cancel job</button><small id="cancel-note">No active job</small></div></section><section class="card"><div class="card-head"><h3>This worker</h3><span class="source">Sandbox</span></div><div id="worker"></div></section></div><div class="stack"><section class="card"><div class="card-head"><h3>Up next</h3><span class="source">Coordinator queue</span></div><div id="next"></div></section><section class="card"><div class="card-head"><h3>Recent outcomes</h3><span class="source">This UI session</span></div><div id="recent"></div></section></div></div>
+        </section>
+    <section id="zones" class="panel" hidden><div class="card map-card"><div class="map-toolbar"><label for="zone-page-full">Page</label><select id="zone-page-full" aria-label="Reservation page"></select></div><div id="visual-zones"></div></div></section>
+    <section id="timeline" class="panel" hidden><div id="visual-timeline"></div><p class="telemetry-note">Execution intervals from dispatch to outcome. The visible window is the last 60 seconds; no estimated render time.</p></section>
+    <section id="queue" class="panel" hidden><div id="dispatch-summary"></div><div class="group-title">File workers <small>Fair turns · FIFO within a lane</small></div><div id="queue-list" class="dispatch-board"></div><p class="telemetry-note">Each incoming batch gets a lane automatically. Commands inside a batch stay ordered. Lanes in one file take turns; separate files run concurrently.</p></section>
+    <section id="resources" class="panel" hidden><div id="visual-resources" class="resource-tiles"></div><div class="grid"><div class="card"><div class="card-head"><h3>Observed in this worker</h3><span class="source">Sandbox</span></div><div id="resource-values"></div><p class="foot">Queue bytes describe waiting request payloads. They do not measure Figma memory.</p></div><div class="card"><h3>Memory and performance</h3><div class="line"><span>Plugin heap</span><span>Not exposed</span></div><div class="line"><span>Figma process memory</span><span>Not connected</span></div><div id="daemon-resources"></div><div class="line"><span>Pages resident in memory</span><span>Unknown</span></div><p class="foot">Process memory cannot be used as a percentage of Figma’s document heap. CPU, GPU render time and ETA are not measured by this console.</p></div></div></section>
+    <section id="activity" class="panel" hidden><div id="activity-summary"></div><div class="activity-toolbar"><h3>Outcome stream</h3><label>Show <select id="filter"><option value="all">All outcomes</option><option value="issues">Issues</option></select></label></div><div class="activity-legend"><span style="--accent:var(--chart-purple)"><i></i>Queue wait</span><span style="--accent:var(--chart-blue)"><i></i>Execution</span><span>Widths show each request’s measured time split</span></div><div id="activity-list" class="activity-stream"></div><p class="telemetry-note">Last 20 coordinator outcomes in this daemon session. Local replies appear when coordinator telemetry is unavailable. Admission rejections are returned to their caller and are not included in this stream.</p></section>
+    <footer class="foot" id="sample">Waiting for the first snapshot.</footer>
+  </main>
+</div>
+<script>
+// Presentation observes bridge messages; it never polls or retains command/result payloads.
+const el = id => document.getElementById(id);
+const preview = typeof location !== 'undefined' && ['127.0.0.1', 'localhost'].includes(location.hostname) && new URLSearchParams(location.search).get('preview') === '1';
+const model = { identity: {}, state: null, telemetry: null, history: [], sparks: new Map(), markup: new Map(), views: new Map(), zoneKey: '', events: [], jobs: new Map(), tab: 'overview', filter: 'all', sampled: null, cancelId: null, issue: '', transport: 'connecting' };
+const escapeText = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n = value => Number.isFinite(value) && value >= 0 ? value : 0;
+const sec = value => (n(value) / 1000).toFixed(1) + ' s';
+const mib = value => (n(value) / 1048576).toFixed(2);
+const row = (label, value) => '<div class="line"><span>' + escapeText(label) + '</span><span>' + escapeText(value) + '</span></div>';
+const ICONS = {
+  activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>', layers:'<path d="m12 2 10 5-10 5L2 7zM2 12l10 5 10-5M2 17l10 5 10-5"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  timeline:'<path d="M3 3v18h18M7 7h7M10 12h10M7 17h5"/>', cpu:'<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2m6-2v2M9 20v2m6-2v2M2 9h2m-2 6h2m16-6h2m-2 6h2"/>',
+  gauge:'<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>', list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v5h6M8 13h8M8 17h5"/>',
+  inbox:'<path d="M3 12h5l2 3h4l2-3h5M6 4h12l3 8v8H3v-8Z"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
+  check:'<path d="m5 12 4 4L19 6"/>', warning:'<path d="m12 3 10 18H2Z M12 9v5m0 3h.01"/>', clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', shield:'<path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6Z m-5 10 3 3 5-6"/>'
+};
+const icon = name => '<svg class="ic" aria-hidden="true" viewBox="0 0 24 24">' + (ICONS[name] || ICONS.activity) + '</svg>';
+const palette = ['chart-blue','chart-purple','chart-cyan','chart-green','chart-orange'];
+function color(key) {
+  const value=String(key), workers=model.telemetry?.workers||[], fileIndex=workers.findIndex(w=>w.fileKey===value);
+  if(fileIndex>=0) return 'var(--'+palette[fileIndex%palette.length]+')';
+  let h=0; for(const c of value)h=(h*31+c.charCodeAt(0))>>>0;
+  const owner=workers.findIndex(w=>w.fileKey&&value.startsWith(w.fileKey+'/'));
+  return 'var(--'+palette[(h+Math.max(0,owner)*2)%palette.length]+')';
+}
+const percent = (a,b) => b > 0 ? Math.max(0,Math.min(100,a/b*100)) : 0;
+function acceptTelemetry(t) {
+  if (model.telemetry?.coordinatorEpoch !== t.coordinatorEpoch) { model.history = []; model.sparks.clear(); model.views.clear(); }
+  model.telemetry = t; model.telemetryReceivedAt=Date.now();
+  const local=t.workers.find(w=>w.workerId===workerId), c=model.state?.current;
+  if(c&&local?.current?.wireId===c.id)updateWorkerProgress({workerId,sessionEpoch:local.sessionEpoch,requestId:local.current.requestId,wireId:c.id,progress:c});
+  const previous = model.history.at(-1);
+  if (!previous || t.sampledAt - previous.at >= 750) {
+    model.history.push({ at:t.sampledAt, active:t.workers.filter(w=>w.current).length, jobs:t.budgets.jobs, bytes:t.budgets.bytes, rss:t.resources?.memory?.rss ?? null, heap:t.resources?.memory?.heapUsed ?? null, loop:t.resources?.eventLoopDelayMs?.p99 ?? null });
+    if (model.history.length > 60) model.history.shift();
+  }
+  paintSoon(false);
+}
+function updateWorkerProgress(update) {
+  const t=model.telemetry,w=t?.workers.find(w=>w.workerId===update.workerId);
+  if(!w?.current||w.current.requestId!==update.requestId||w.current.wireId!==update.wireId||w.sessionEpoch!==update.sessionEpoch)return;
+  const p=update.progress;
+  if(!p||!Number.isFinite(p.done)||!Number.isFinite(p.total)||p.done<0||p.total<0)return;
+  // A delayed coordinator progress sample cannot rewind newer local progress.
+  const done=Math.max(n(w.current.progress?.done),p.done);
+  if(w.current.progress?.done===done&&w.current.progress?.total===p.total)return;
+  w.current={...w.current,progress:{done,total:p.total}};
+  paintSoon(false);
+}
+function timelineNow(t) { return t.sampledAt+Math.floor(Math.max(0,Date.now()-model.telemetryReceivedAt)/1000)*1000; }
+function paintTimeline(t) {
+  const id=model.tab==='overview'?'overview-timeline':'visual-timeline',now=timelineNow(t);
+  view(id,[now,t.sampledAt,t.workers,t.recent],()=>executionTimeline(t,now));
+}
+function syncTimeline() {
+  const t=model.telemetry,visible=!document.hidden&&!disposed&&document.body.dataset.mode!=='compact'&&['overview','timeline'].includes(model.tab);
+  const active=visible&&t&&(t.workers.some(w=>w.current)||(t.recent||[]).some(e=>e.completedAt>=timelineNow(t)-60000));
+  if(!active) {clearTimeout(timelineTimer);timelineTimer=null;return;}
+  if(timelineTimer===null)timelineTimer=setTimeout(()=>{timelineTimer=null;if(model.telemetry&&!document.hidden&&['overview','timeline'].includes(model.tab)&&document.body.dataset.mode!=='compact')paintTimeline(model.telemetry);syncTimeline();},1000);
+}
+function spark(field, accent, max) {
+  const values = model.history.map(h=>h[field]).filter(Number.isFinite);
+  if (values.length < 2) return '<small class="source">Collecting measured samples…</small>';
+  const key=field+'/'+accent+'/'+max, stamp=model.history.at(-1).at, previous=model.sparks.get(key);
+  if(previous?.stamp===stamp)return previous.html;
+  const ceiling=max||Math.max(1,...values);
+  // Fixed point count lets CSS morph between actual sampled traces. Interpolation
+  // is visual only; displayed measurements always come directly from telemetry.
+  const points=Array.from({length:32},(_,i)=>{const at=i/31*(values.length-1),lo=Math.floor(at),hi=Math.min(values.length-1,lo+1),v=values[lo]+(values[hi]-values[lo])*(at-lo);return [(i/31*100).toFixed(2),(26-percent(v,ceiling)*.24).toFixed(2)];});
+  const d=points.map((p,i)=>(i?'L':'M')+p.join(' ')).join(' ');
+  const html='<svg class="spark" role="img" aria-label="'+escapeText(field)+' · last '+values.length+' measured samples" viewBox="0 0 100 28" preserveAspectRatio="none" style="color:'+accent+'"><path d="'+d+' L100 28 L0 28Z" fill="currentColor" fill-opacity=".1"/><path class="spark-line" d="'+d+'" fill="none" stroke="currentColor" stroke-width="1.4" vector-effect="non-scaling-stroke"/><circle class="spark-end" cx="100" cy="'+points.at(-1)[1]+'" r="1" fill="currentColor"/></svg>';
+  model.sparks.set(key,{stamp,html});return html;
+}
+// State selection, HTML calculation and DOM commit are separate. Each visible
+// region owns a bounded cache; transport sequence numbers do not invalidate it.
+function changed(id, inputs) {
+  const key=JSON.stringify(inputs);
+  if(model.views.get(id)===key)return false;
+  model.views.set(id,key);return true;
+}
+function view(id, inputs, render) { if(changed(id,inputs))markup(id,render()); }
+function property(id, name, value) { const node=el(id);if(node[name]!==value)node[name]=value; }
+function text(id, value) { property(id,'textContent',String(value)); }
+const nodeKey = node => node.nodeType===1 ? node.getAttribute('data-key') : null;
+const compatible = (a,b) => a && a.nodeType===b.nodeType && a.nodeName===b.nodeName && a.namespaceURI===b.namespaceURI && nodeKey(a)===nodeKey(b);
+function patchChildren(target, source) {
+  const keyed=new Map([...target.childNodes].filter(nodeKey).map(node=>[nodeKey(node),node]));
+  let cursor=target.firstChild;
+  for(const next of [...source.childNodes]) {
+    const key=nodeKey(next), current=key?keyed.get(key):cursor;
+    if(!compatible(current,next)) { target.insertBefore(next.cloneNode(true),cursor);continue; }
+    if(current!==cursor)target.insertBefore(current,cursor);
+    if(!current.isEqualNode(next)) {
+      if(current.nodeType===1) {
+        for(const attr of [...current.attributes])if(!next.hasAttribute(attr.name))current.removeAttribute(attr.name);
+        for(const attr of next.attributes)if(current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
+        patchChildren(current,next);
+      } else if(current.nodeValue!==next.nodeValue)current.nodeValue=next.nodeValue;
     }
-
-    // Try all ports in parallel, use first successful connection
-    function connectParallel() {
-      if (ws && ws.readyState === WebSocket.OPEN) return;
-
-      setStatus('Scanning...', 'connecting');
-      let connected = false;
-      const attempts = [];
-
-      PORTS.forEach(port => {
-        const url = `ws://127.0.0.1:${port}/plugin`;
-        try {
-          const socket = new WebSocket(url);
-          attempts.push(socket);
-
-          socket.onopen = () => {
-            if (connected) {
-              socket.close();
-              return;
-            }
-            connected = true;
-            ws = socket;
-
-            // Close other attempts (silently, no handlers)
-            attempts.forEach(s => {
-              if (s !== socket) {
-                s.onclose = null;  // Prevent triggering reconnect
-                s.onerror = null;
-                try { s.close(); } catch {}
-              }
-            });
-
-            // NOW set handlers on winning socket only
-            ws.onmessage = handleMessage;
-            ws.onclose = handleClose;
-            ws.onerror = handleClose;
-
-            setStatus('Connected', 'connected');
-            parent.postMessage({ pluginMessage: { type: 'connected' } }, '*');
-
-            // Send hello
-            ws.send(JSON.stringify({ type: 'hello', mode: 'plugin', version: '1.3.0' }));
-
-            // Start keepalive (ping every 10s)
-            startKeepalive();
-          };
-
-          // During scan: ignore close/error (don't trigger reconnect)
-          socket.onclose = () => {};
-          socket.onerror = () => {};
-        } catch (e) {}
-      });
-
-      // If no connection after 1.5s, retry (faster than 3s)
-      setTimeout(() => {
-        if (!connected) {
-          attempts.forEach(s => {
-            s.onclose = null;
-            try { s.close(); } catch {}
-          });
-          clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(connectParallel, 300);
-        }
-      }, 1500);
+    cursor=current.nextSibling;
+  }
+  while(cursor) { const next=cursor.nextSibling;target.removeChild(cursor);cursor=next; }
+}
+function markup(id,html) {
+  if(model.markup.get(id)===html)return;
+  const template=document.createElement('template');template.innerHTML=html;
+  const focused=document.activeElement;
+  patchChildren(el(id),template.content);
+  // Moving a keyed item can blur it; updating its text/attributes never replaces it.
+  if(focused?.isConnected&&document.activeElement!==focused)focused.focus({preventScroll:true});
+  model.markup.set(id,html);
+}
+function orbit(segments, value, label, accessible) {
+  let offset=0;
+  return '<div class="orbit" role="img" aria-label="'+escapeText(accessible)+'"><svg viewBox="0 0 112 112" aria-hidden="true"><circle class="ring-track" cx="56" cy="56" r="45"/>'+segments.map(([amount,accent])=>{const start=offset;offset+=amount;return '<circle class="ring-segment" cx="56" cy="56" r="45" pathLength="100" stroke="'+accent+'" stroke-dasharray="'+amount+' '+(100-amount)+'" stroke-dashoffset="'+(-start)+'"/>';}).join('')+'</svg><div class="orbit-value"><b>'+escapeText(value)+'</b><small>'+escapeText(label)+'</small></div></div>';
+}
+function dispatchSummary(t) {
+  const running=t.workers.filter(w=>w.current).length, waiting=(t.lanes||[]).filter(j=>j.state==='queued').length, committed=(t.reservations||[]).filter(z=>z.state==='committed').length;
+  return '<div class="console-hero"><div><div class="eyebrow">'+icon('cpu')+'Coordinator / live dispatch</div><h3>'+ (running?running+' worker'+(running===1?'':'s')+' executing':'Ready for the next job')+'</h3><p>Incoming batches get lanes automatically. Each file executes one lane at a time.</p><div class="hero-chips"><span><b>'+t.workers.filter(w=>w.connected).length+'</b>connected</span><span><b>'+mib(t.budgets.bytes)+' MiB</b>admitted data</span><span><b>'+n(t.held)+'</b>held</span></div></div>'+orbit([[percent(t.budgets.jobs,t.budgets.maxJobs),'var(--hero-accent)']],t.budgets.jobs+'/'+t.budgets.maxJobs,'admitted jobs',t.budgets.jobs+' of '+t.budgets.maxJobs+' coordinator job slots admitted')+'</div><div class="dispatch-stages">'+[
+    ['clock','Waiting',waiting,'Queued for a worker turn','chart-purple'],['activity','Executing',running,'One writer per file','chart-blue'],['shield','Committed zones',committed,(t.omittedReservations?'Visible reservations only':'Protected after completion'),'chart-green']].map(([glyph,title,value,detail,accent])=>'<div class="stage-card" style="--accent:var(--'+accent+')"><span>'+icon(glyph)+title+'</span><b>'+value+'</b><small>'+detail+'</small></div>').join('')+'</div>';
+}
+function dispatchBoard(t) {
+  return t.workers.map((w,index)=>{
+    const jobs=(t.lanes||[]).filter(j=>j.workerId===w.workerId), waiting=jobs.filter(j=>j.state==='queued'), c=w.current, accent=color(w.fileKey), progress=c?.progress;
+    const state=w.quarantine?'Held':!w.connected?'Offline':c?'Executing':'Ready';
+    const tickets=waiting.map(j=>'<article data-key="'+escapeText(j.requestId)+'" class="queue-ticket" style="--accent:'+color(w.fileKey+'/'+j.laneId)+'"><div class="lane-heading"><b>'+escapeText(j.label||j.laneId)+'</b><small>'+sec(j.waitMs)+'</small></div><div class="lane-sub">'+escapeText(j.agentId||j.laneId)+' · Page '+escapeText(j.pageId||'Unscoped')+'</div><div class="lane-meta"><span>'+escapeText(j.laneId)+'</span><span>'+mib(j.bytes)+' MiB</span></div><span class="tag">'+escapeText((j.blockedReason||'waiting-worker-turn').replace(/-/g,' '))+'</span>'+(w.workerId===workerId?'<div class="actions"><button class="lane-cancel" data-cancel-request="'+escapeText(j.requestId)+'">Cancel waiting job</button></div>':'')+'</article>').join('');
+    return '<article data-key="'+escapeText(w.workerId)+'" class="dispatch-worker" style="--accent:'+accent+'"><div class="worker-head"><span class="worker-icon">'+icon('file')+'</span><div class="worker-title"><b>'+escapeText(w.file||w.fileKey||'Unattested file')+'</b><small>Worker '+(index+1)+' · '+new Set(jobs.map(j=>j.laneId)).size+' admitted lanes</small></div><span class="state-pill">'+state+'</span></div><div class="dispatch-route"><div><div class="group-title">Waiting <small>'+waiting.length+' jobs</small></div><div class="queue-tickets">'+(tickets||'<div class="empty-illustration">'+icon('inbox')+'<span><b>Queue is clear</b>No waiting jobs.</span></div>')+'</div></div><div class="route-connector '+(c?'running':'')+'" aria-hidden="true"><svg viewBox="0 0 22 40"><path d="M0 20h19m-6-5 6 5-6 5"/></svg></div><div><div class="group-title">Current turn</div><div class="dispatch-slot"><div class="slot-label">'+icon(c?'activity':'check')+state+'</div><h3>'+escapeText(c?.label||c?.laneId||(w.quarantine?'Awaiting reconciliation':!w.connected?'Connection unavailable':'Worker available'))+'</h3><div class="lane-sub">'+(c?'Page '+escapeText(c.pageId||'Unscoped')+' · '+escapeText(c.laneId):'A ready lane takes the next turn')+'</div>'+(progress?.total>0?visualBar('dispatch/'+c.requestId,percent(progress.done,progress.total),accent):'')+(c?'<div class="lane-meta"><span>'+(progress?.total>0?n(progress.done)+' / '+n(progress.total)+' nodes':'Progress not measured')+'</span><span>'+sec(c.executionMs)+'</span></div>':'')+'</div></div></div></article>';
+  }).join('')||'<div class="empty-illustration">'+icon('layers')+'<span><b>No file workers connected</b>Pair a plugin to begin.</span></div>';
+}
+function activitySummary(items, t) {
+  const ok=items.filter(e=>e.outcome==='succeeded').length, uncertain=items.filter(e=>e.outcome==='uncertain'||e.outcome==='partial').length, issues=items.length-ok-uncertain;
+  const segments=[[percent(ok,items.length),'var(--hero-ok)'],[percent(issues,items.length),'var(--hero-issue)'],[percent(uncertain,items.length),'var(--hero-uncertain)']];
+  return '<div class="console-hero activity-hero"><div><div class="eyebrow">'+icon('activity')+'Observed outcomes</div><h3>'+ (items.length?'Every job leaves a trace.':'Waiting for the first outcome')+'</h3><p>'+(t?'Queue time, execution time and geometry checks from the coordinator.':'Local plugin replies. Timing is shown only when available.')+'</p><div class="hero-chips"><span><b>'+ok+'</b>succeeded</span><span><b>'+issues+'</b>stopped / failed</span><span><b>'+uncertain+'</b>uncertain / partial</span></div></div>'+orbit(segments,items.length,'recent outcomes',ok+' succeeded, '+issues+' stopped or failed, '+uncertain+' uncertain or partial')+'</div>';
+}
+function activityCards(items,t) {
+  const filtered=items.filter(e=>model.filter==='all'||e.outcome!=='succeeded');
+  const html=filtered.map(e=>{
+    const ok=e.outcome==='succeeded', uncertain=['uncertain','partial'].includes(e.outcome), accent=ok?'var(--chart-green)':uncertain?'var(--red)':'var(--orange)', timed=Number.isFinite(e.queueMs)&&Number.isFinite(e.executionMs), total=n(e.queueMs)+n(e.executionMs), perf=e.performance;
+    const w=t?.workers.find(w=>w.workerId===e.workerId);
+    return '<article data-key="'+escapeText(e.id)+'" class="activity-entry entry-new '+(uncertain?'is-uncertain':'')+'" style="--accent:'+accent+'"><div class="event-symbol">'+icon(ok?'check':uncertain?'warning':'shield')+'</div><div class="event"><div class="event-title"><b>'+escapeText(e.laneId&&!e.laneId.startsWith('$')?e.laneId:e.op)+'</b><span class="state-pill">'+escapeText(e.outcome)+'</span></div><div class="event-context"><span>'+escapeText(e.op)+'</span>'+(e.category?'<span>'+escapeText({query:'Query',screenshot:'Screenshot / export',change:'Canvas change',batch:'Batch',control:'Control'}[e.category]||e.category)+'</span>':'')+(w?'<span>'+escapeText(w.file||w.fileKey||'Worker')+'</span>':'')+(e.pageId?'<span>Page '+escapeText(e.pageId)+'</span>':'')+(Number.isFinite(e.completedAt)?'<span>'+escapeText(new Date(e.completedAt).toLocaleTimeString())+'</span>':'')+'</div>'+(timed?'<div class="event-latency" role="img" aria-label="Queue '+sec(e.queueMs)+', execution '+sec(e.executionMs)+'"><i style="width:'+percent(e.queueMs,total)+'%"></i><i style="width:'+percent(e.executionMs,total)+'%"></i></div><div class="event-timings"><span>Queue <b>'+sec(e.queueMs)+'</b></span><span>Execution <b>'+sec(e.executionMs)+'</b></span><span>Total <b>'+sec(total)+'</b></span></div>':'<div class="reason">Timing unavailable for this local reply.</div>')+(perf&&Number.isFinite(perf.spatialMs)?'<div class="event-measure">Geometry <b>'+sec(perf.spatialMs)+'</b> · '+n(perf.spatialChecks)+' checks · '+n(perf.spatialNodes).toLocaleString()+' node visits · '+n(perf.yieldCount)+' yields</div>':'')+(e.kind||e.detail?'<p class="reason" style="margin-top:8px">'+escapeText(e.kind||e.detail)+'</p>':'')+'<div class="event-id">'+escapeText(e.id)+'</div></div></article>';
+  }).join('');
+  return html||'<div class="empty-illustration">'+icon('check')+'<span><b>'+(items.length?'No issues in these outcomes':'No outcomes yet')+'</b>'+(items.length?'Change the filter to see successful jobs.':'Completed requests will appear here.')+'</span></div>';
+}
+function paintActivity(items,t) {
+  view('activity-summary',[items,!!t],()=>activitySummary(items,t));
+  view('activity-list',[items,t?.workers.map(w=>[w.workerId,w.fileKey,w.file]),model.filter],()=>activityCards(items,t));
+}
+function visualBar(id, value, accent) {
+  return '<div class="vbar" role="progressbar" aria-label="Measured create progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+value.toFixed(1)+'" style="--accent:'+accent+'"><i style="--value:'+(value/100)+'"></i></div>';
+}
+function workerCards(t) {
+  return t.workers.map((w,index)=>{
+    const jobs=(t.lanes||[]).filter(j=>j.workerId===w.workerId), zones=(t.reservations||[]).filter(z=>z.fileKey===w.fileKey);
+    const laneIds=[...new Set(jobs.map(j=>j.laneId))];
+    const status=w.quarantine?'Held':!w.connected?'Offline':w.current?'Running':'Ready', stateColor=w.quarantine?'var(--red)':w.current?'var(--chart-green)':'var(--muted)';
+    const lanes=laneIds.map(id=>{
+      const laneJobs=jobs.filter(j=>j.laneId===id), job=laneJobs.find(j=>j.state!=='queued')||laneJobs[0], zone=zones.find(z=>z.laneId===id), c=w.current?.laneId===id?w.current:null;
+      const accent=color(w.fileKey+'/'+id), progress=c?.progress, measured=progress?.total>0;
+      const state=w.quarantine?'Held':!w.connected?'Offline':c?c.phase:job?'Waiting':zone?.state==='committed'?'Committed':'Reserved';
+      return '<div data-key="'+escapeText(id)+'" class="visual-lane" style="--accent:'+accent+'"><div class="lane-heading"><b>'+escapeText(job?.label||zone?.agentId||job?.agentId||id)+'</b><span class="state-pill">'+escapeText(state)+'</span></div><div class="lane-sub">'+escapeText(c?.label||job?.label||id)+'</div><div class="lane-sub">Page '+escapeText(job?.pageId||zone?.pageId||'Unscoped')+' · '+escapeText(id)+'</div>'+(measured?visualBar(c.requestId,percent(progress.done,progress.total),accent):'')+'<div class="lane-meta"><span>'+ (measured?n(progress.done)+' / '+n(progress.total)+' create nodes':c?'Operation in progress':job?escapeText((job.blockedReason||'Waiting for turn').replace(/-/g,' ')):n(zone?.nodeCount)+' committed roots')+'</span><span>'+ (c?sec(c.executionMs):laneJobs.length+' admitted')+'</span></div>'+(job&&w.workerId===workerId?'<button class="lane-cancel" data-cancel-request="'+escapeText(job.requestId)+'">Cancel '+(c?'job':'waiting job')+'</button>':'')+'</div>';
+    }).join('');
+    return '<article data-key="'+escapeText(w.workerId)+'" class="worker-card"><div class="worker-head" style="--accent:'+color(w.fileKey)+'"><span class="worker-icon">'+icon('file')+'</span><div class="worker-title"><b>'+escapeText(w.file||w.fileKey||'Unattested file')+'</b><small>Worker '+(index+1)+' · '+escapeText(w.workerId.slice(0,8))+'</small></div><span class="state-pill" style="--accent:'+stateColor+'"><i class="live-dot '+(w.current&&!w.quarantine?'running':'')+'"></i>'+status+'</span></div>'+ (lanes||'<p class="empty" style="padding:12px">Lanes appear automatically when work arrives.</p>')+'<div class="worker-foot"><span>'+jobs.length+' admitted · '+mib(jobs.reduce((s,j)=>s+n(j.bytes),0))+' MiB</span><span>'+zones.length+' reservations</span></div></article>';
+  }).join('') || '<p class="empty">Pair a worker to see its page lanes.</p>';
+}
+function executionTimeline(t, end=t.sampledAt) {
+  const start=end-60000, segments=[];
+  for (const e of t.recent||[]) if (Number.isFinite(e.executionMs)&&e.completedAt>=start) segments.push({workerId:e.workerId,laneId:e.laneId&&!e.laneId.startsWith('$')?e.laneId:e.op,start:e.completedAt-e.executionMs,end:e.completedAt,running:false});
+  for (const w of t.workers) if(w.current&&t.sampledAt>=start) segments.push({workerId:w.workerId,laneId:w.current.laneId,start:t.sampledAt-n(w.current.executionMs),end:t.sampledAt,running:true});
+  const keys=[...new Set(segments.map(s=>s.workerId+'/'+s.laneId))];
+  return '<div class="group-title">Execution timeline<small>Last 60 seconds · daemon</small></div><div class="card timeline-card">'+ (keys.map(k=>{
+    const items=segments.filter(s=>s.workerId+'/'+s.laneId===k), first=items[0], w=t.workers.find(w=>w.workerId===first.workerId), accent=color((w?.fileKey||first.workerId)+'/'+first.laneId);
+    return '<div data-key="'+escapeText(k)+'" class="time-row"><span title="'+escapeText(w?.file||first.workerId)+'">'+escapeText(first.laneId)+'</span><div class="time-track">'+items.map(s=>'<i class="'+(s.running?'running':'')+'" title="'+escapeText(first.laneId)+' · '+sec(s.end-s.start)+'" style="--accent:'+accent+';left:'+percent(Math.max(start,s.start)-start,60000)+'%;width:'+percent(s.end-Math.max(start,s.start),60000)+'%"></i>').join('')+'</div></div>';
+  }).join('')||'<p class="empty">Execution intervals appear as jobs run.</p>')+'<div class="time-axis"><span>−60 s</span><span>−30 s</span><span>now</span></div></div>';
+}
+function zoneMap(zones, full=false) {
+  if (!zones.length) return '<p class="empty">A reserved page appears here after admission.</p>';
+  const minX=Math.min(...zones.map(z=>z.rect.x)), minY=Math.min(...zones.map(z=>z.rect.y)), maxX=Math.max(...zones.map(z=>z.rect.x+z.rect.width)), maxY=Math.max(...zones.map(z=>z.rect.y+z.rect.height));
+  const span=Math.max(maxX-minX,maxY-minY,1), pad=span*.07, font=span/30;
+  const svg='<svg class="canvas-map '+(full?'full':'')+'" role="img" aria-label="Page-space reservation map with measured root bounds" viewBox="'+[minX-pad,minY-pad,maxX-minX+pad*2,maxY-minY+pad*2].join(' ')+'">'+zones.map(z=>{
+    const accent=z.state==='held'?'var(--zone-held)':color(z.fileKey+'/'+z.laneId), r=z.rect;
+    return '<g data-key="'+escapeText(z.requestId)+'" style="color:'+accent+'"><rect class="zone-border '+(z.state==='running'?'zone-active':'')+'" x="'+r.x+'" y="'+r.y+'" width="'+r.width+'" height="'+r.height+'" rx="'+span*.012+'" fill="currentColor" fill-opacity=".06" stroke="currentColor"/><text x="'+(r.x+r.width*.04)+'" y="'+(r.y+r.height*.1)+'" fill="currentColor" font-size="'+Math.min(font,r.width/8,r.height/8)+'" font-weight="600">'+escapeText(z.laneId.slice(0,24))+'</text>'+(z.roots||[]).map(root=>{const b=root.rect;return '<rect x="'+b.x+'" y="'+b.y+'" width="'+b.width+'" height="'+b.height+'" rx="'+span*.004+'" fill="currentColor" fill-opacity=".35"><title>Measured created root</title></rect>';}).join('')+'</g>';
+  }).join('')+'</svg>';
+  return svg+'<div class="map-legend">'+zones.map(z=>'<div class="legend-row" style="--accent:'+color(z.fileKey+'/'+z.laneId)+'"><i></i><span><b>'+escapeText(z.laneId)+'</b><small>'+escapeText(z.state)+' · gutter '+n(z.gutter)+' px</small></span><em>'+n(z.nodeCount)+' roots'+(z.omittedRoots?' · '+n(z.omittedRoots)+' not drawn':'')+'<small>'+z.rect.width+' × '+z.rect.height+'</small></em></div>').join('')+'</div><p class="telemetry-note">'+icon('info')+'<span>Outlined bounds are reservations. Solid shapes are measured committed roots; a running outline does not estimate completed artwork.</span></p>';
+}
+function paintVisuals(t) {
+  const tab=model.tab, overview=tab==='overview', identities=t?.workers.map(w=>[w.workerId,w.fileKey,w.file]);
+  const visible={overview:['overview-workers','overview-zones','overview-timeline'],workers:['visual-workers'],zones:['visual-zones'],timeline:['visual-timeline'],resources:['visual-resources']}[tab]||[];
+  if(!t) {
+    for(const id of visible)markup(id,'<p class="empty">Pair a worker to see measured activity.</p>');
+    if(overview) {
+      for(const id of ['overview-threads','spark-active','spark-jobs','spark-bytes','spark-memory','zone-page'])markup(id,'');
+      text('overview-memory','—');text('worker-capacity','Waiting for coordinator');
     }
-
-    function handleMessage(event) {
-      try {
-        const msg = JSON.parse(event.data);
-
-        if (msg.action === 'eval') {
-          parent.postMessage({
-            pluginMessage: { type: 'eval', id: msg.id, code: msg.code }
-          }, '*');
-        }
-
-        // Batch eval support
-        if (msg.action === 'eval-batch') {
-          parent.postMessage({
-            pluginMessage: { type: 'eval-batch', id: msg.id, codes: msg.codes }
-          }, '*');
-        }
-
-        // Daemon pings us
-        if (msg.action === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong', id: msg.id }));
-        }
-
-        // Daemon responds to our ping
-        if (msg.type === 'pong') {
-          lastPong = Date.now();
-        }
-      } catch (e) {
-        console.error('Message parse error:', e);
-      }
+    if(tab==='zones')markup('zone-page-full','');
+    markup('sidebar-workers','One executor per file · Automatic task lanes');
+    return;
+  }
+  view('sidebar-workers',identities,()=>'<div class="group-title">Workers</div>'+t.workers.map((w,i)=>'<p data-key="'+escapeText(w.workerId)+'" style="margin:8px 0">'+(i+1)+' · '+escapeText(w.file||w.fileKey||'Unknown')+'</p>').join(''));
+  if(overview) {
+    text('worker-capacity','of '+t.workers.filter(w=>w.connected).length+' connected workers');
+    text('overview-memory',t.resources?mib(t.resources.memory.rss):'—');
+    for(const [id,field,accent,max] of [['active','active','var(--chart-green)',4],['jobs','jobs','var(--chart-blue)',32],['bytes','bytes','var(--chart-orange)',33554432],['memory','rss','var(--chart-purple)',null]])
+      view('spark-'+id,model.history.map(h=>h[field]),()=>spark(field,accent,max));
+    view('overview-threads',t.workers.map(w=>[w.workerId,w.fileKey,w.quarantine,w.current?.laneId]),()=>t.workers.map((w,i)=>'<span data-key="'+escapeText(w.workerId)+'" class="thread-chip" style="--accent:'+color(w.fileKey)+'"><i></i>Worker '+(i+1)+' · '+escapeText(w.quarantine?'held':w.current?w.current.laneId+' has the turn':'ready')+'</span>').join(''));
+  }
+  if(overview||tab==='workers')view(overview?'overview-workers':'visual-workers',[t.workers,t.lanes,t.reservations,workerId],()=>workerCards(t));
+  if(overview||tab==='timeline')paintTimeline(t);
+  if(overview||tab==='zones') {
+    const groups=new Map();for(const z of t.reservations||[]) {const k=z.fileKey+'/'+z.pageId;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(z);}
+    if(!groups.has(model.zoneKey))model.zoneKey=groups.keys().next().value||'';
+    const picker=overview?'zone-page':'zone-page-full';
+    view(picker,[identities,[...groups.keys()]],()=>[...groups].map(([k,z])=>'<option data-key="'+escapeText(k)+'" value="'+escapeText(k)+'">'+escapeText((t.workers.find(w=>w.fileKey===z[0].fileKey)?.file||z[0].fileKey)+' · '+z[0].pageId)+'</option>').join(''));
+    property(picker,'value',model.zoneKey);
+    const zones=groups.get(model.zoneKey)||[];
+    view(overview?'overview-zones':'visual-zones',[identities,zones,t.omittedReservations],()=>zoneMap(zones,!overview)+(!overview&&t.omittedReservations?'<p class="telemetry-note">'+n(t.omittedReservations)+' older reservations not drawn; all remain enforced.</p>':''));
+  }
+  if(tab==='resources')view('visual-resources',[t.resources,t.budgets.bytes,model.history],()=>{
+    if(!t.resources)return '<p class="empty">Waiting for a full resource snapshot.</p>';
+    const r=t.resources;
+    return [['Daemon RSS',mib(r.memory.rss),'MiB','rss','chart-purple'],['Heap used',mib(r.memory.heapUsed),'MiB','heap','chart-blue'],['Event-loop delay p99',Number.isFinite(r.eventLoopDelayMs.p99)?r.eventLoopDelayMs.p99.toFixed(1):'—','ms','loop','chart-cyan'],['Admitted data',mib(t.budgets.bytes),'MiB','bytes','chart-orange']].map(([title,value,unit,field,accent])=>'<div data-key="'+field+'" class="resource-tile" style="--accent:var(--'+accent+')"><small>'+title+'</small><b>'+value+'<small>'+unit+'</small></b>'+spark(field,'var(--'+accent+')')+'<div class="resource-caption"><span>'+model.history.filter(h=>Number.isFinite(h[field])).length+' measured samples</span><span>Node coordinator</span></div></div>').join('');
+  });
+}
+// Progress bursts keep only their latest state. Operator actions and outcomes
+// bypass the 100 ms visual budget; transport/watchdog replies never wait for it.
+let frame=null, paintTimer=null, timelineTimer=null, lastPaint=-Infinity, disposed=false;
+function stopPainting() {
+  if(frame!==null)cancelAnimationFrame(frame);
+  clearTimeout(paintTimer);clearTimeout(timelineTimer);frame=null;paintTimer=null;timelineTimer=null;
+}
+function paintSoon(urgent=true) {
+  if(document.hidden||disposed)return;
+  if(urgent&&paintTimer!==null) {clearTimeout(paintTimer);paintTimer=null;}
+  if(frame!==null||paintTimer!==null)return;
+  const enqueue=()=>{
+    paintTimer=null;
+    if(document.hidden)return;
+    if(typeof requestAnimationFrame!=='function') {lastPaint=Date.now();paint();return;}
+    frame=requestAnimationFrame(()=>{frame=null;if(!document.hidden){lastPaint=Date.now();paint();}});
+  };
+  const delay=urgent?0:Math.max(0,100-(Date.now()-lastPaint));
+  if(delay)paintTimer=setTimeout(enqueue,delay);else enqueue();
+}
+function setMode(mode, notify = false) {
+  if (!['compact','standard','console'].includes(mode)) return;
+  const needsPaint=document.body.dataset.mode!==mode;
+  if(needsPaint)document.body.dataset.mode=mode;property('mode','value',mode);
+  if (notify) toMain({ type: 'ui-mode', mode });
+  if (notify) subscribe();
+  if(needsPaint)paintSoon();
+}
+function setTheme(theme, notify = false) {
+  if (!['ios','signal'].includes(theme)) return;
+  document.body.dataset.theme=theme;
+  el('ui-theme').value=theme; el('compact-theme').value=theme;
+  if(notify) toMain({type:'ui-theme',theme});
+}
+function paintCompact() {
+  const t=model.telemetry, s=model.state, c=s?.current, i=model.identity;
+  const connected=model.transport==='connected', workers=t?.workers||[], active=workers.filter(w=>w.current).length;
+  const local=workers.find(w=>w.workerId===workerId||i.fileKey&&w.fileKey===i.fileKey), job=(local?.current?.wireId||local?.current?.requestId)===c?.id?local?.current:null;
+  const held=t?n(t.held):null, localAttention=!!model.issue||!!local?.quarantine, attention=localAttention||!!held;
+  const uncertain=model.events.some(e=>e.outcome==='uncertain')||local?.quarantine||model.issue&&c;
+  const running=connected&&!!c&&!localAttention, cancelling=c?.cancelled||model.cancelId;
+  const total=n(c?.total), done=Math.min(n(c?.done),total), value=percent(done,total);
+  const status=localAttention?'Review required':!connected?'Connection unavailable':c?(cancelling?'Stopping at checkpoint':'This file · '+c.op):s?'This file · Ready':'Waiting for snapshot';
+  const title=localAttention?'Review the last job':!connected?(stopped?'Restart the plugin':credential?'Reconnecting…':'Connect this computer'):c?(job?.label||c.op):'Ready for the next job';
+  const target=c?(c.target?.page||(job?.pageId?'Page '+job.pageId:'Target not reported')):'Visible · '+(i.page||'Waiting for identity');
+  const symbol=localAttention?'warning':!connected?'layers':c?'activity':'check';
+  const gauge=running&&total?'<circle class="ring-progress" cx="32" cy="32" r="27" pathLength="100" style="--value:'+value+'"/>':running&&!cancelling?'<circle class="ring-unmeasured" cx="32" cy="32" r="27" pathLength="100"/>':'';
+  const progress=running&&total?'<b>'+Math.floor(value)+'%</b><small>nodes</small>':icon(symbol)+'<small>'+(localAttention?'Review':!connected?'Offline':c?'Working':'Ready')+'</small>';
+  const progressLabel=running&&total?done+' / '+total+' nodes':running?'Progress unmeasured':localAttention?'Outcome needs reconciliation':connected?'No active creation':'Open console to reconnect';
+  property('compact-live','textContent',preview?'Sample data':attention?'Needs attention':connected?'Connected':'Offline');
+  model.compactAttention=attention;
+  property('details','textContent',attention?'Review outcome ↗':connected?'Open console ↗':'Connect ›');
+  property('details','className',attention?'compact-review':'');
+  property('details','title',attention?'Open Activity to inspect observed outcomes':'Open the full worker console');
+  property('compact-focus','className','compact-focus'+(localAttention?' attention':''));
+  if(localAttention) markup('compact-focus','<div class="compact-focus-top"><div class="compact-copy"><div class="eyebrow">'+icon('warning')+'Attention required</div><h2>'+(uncertain?'Outcome uncertain':'Worker needs review')+'</h2><p>Review before retrying.</p></div><div class="attention-graphic compact-attention-graphic">'+orbit([],held||'!',held?(held===1?'held area':'held areas'):'Review',held?held+' held; reservations remain protected':'Attention required; outcome needs review')+'</div></div><div class="compact-job-meta"><span>'+(uncertain?'Inspect affected artwork':'Check connection details')+'</span><span>'+(held?held+' held · not released':uncertain?'Changes not confirmed':'Review required')+'</span></div>');
+  else markup('compact-focus','<div class="compact-focus-top"><div class="compact-copy"><div class="eyebrow">'+escapeText(status)+'</div><h2 title="'+escapeText(title)+'">'+escapeText(title)+'</h2><p title="'+escapeText(target)+'">'+icon('layers')+'<span>'+escapeText(target)+'</span></p></div><div class="compact-orbit" role="img" aria-label="'+escapeText(progressLabel)+'"><svg aria-hidden="true" viewBox="0 0 64 64"><circle class="ring-track" cx="32" cy="32" r="27"/>'+gauge+'</svg><div class="orbit-value">'+progress+'</div></div></div><div class="compact-job-meta"><span>'+escapeText(progressLabel)+'</span><span>'+(running?sec(c.ms)+' sampled':held?held+' held · review':connected?'Worker available':'Not paired')+'</span></div>');
+  markup('compact-metrics',[[t?active:'—','Running files','layers','blue'],[t?Math.max(0,n(t.budgets.jobs)-active):'—','Waiting jobs','inbox','slate'],[held??'—',held?'Held · review':'Held areas','shield',held?'red':'slate']].map(([v,label,glyph,accent])=>'<div class="compact-stat" style="--accent:var(--'+accent+')"><div>'+icon(glyph)+'<strong>'+v+'</strong></div><small>'+label+'</small></div>').join(''));
+  markup('compact-network','<span>'+workers.slice(0,4).map(w=>'<i aria-hidden="true" title="'+escapeText(w.file||w.workerId)+'" class="compact-worker '+(w.quarantine?'held':w.connected?w.current?'running':'ready':'')+'"></i>').join('')+(t?'All files · '+workers.filter(w=>w.connected).length+' connected':'Coordinator summary unavailable')+'</span><span class="compact-capacity">'+(t?mib(t.budgets.bytes)+' MiB admitted':'—')+'</span>');
+  property('compact-caption','textContent',i.file||'Waiting for file identity');
+  property('compact-caption','title',i.file||'');
+}
+function paintAttention() {
+  const t=model.telemetry, held=n(t?.held), local=t?.workers.find(w=>w.workerId===workerId||model.identity.fileKey&&w.fileKey===model.identity.fileKey);
+  property('alert','hidden',!(model.issue||held||local?.quarantine));
+  if(el('alert').hidden) return;
+  const uncertain=held||local?.quarantine||model.events.some(e=>e.outcome==='uncertain')||model.issue&&model.state?.current;
+  markup('alert','<div class="attention-body"><div class="eyebrow">'+icon('warning')+'Attention required</div><h3>'+(uncertain?'Outcome uncertain':'This worker needs attention')+'</h3><p>Review before retrying. '+escapeText(held?'Inspect the affected artwork and reconcile held areas before submitting it again.':model.issue||'This file is held pending review.')+'</p><div class="hero-chips"><span>'+icon('shield')+(held?'<b>'+held+'</b>held · reservations stay protected':'Changes need review')+'</span><span>No automatic retry</span></div><div class="attention-actions"><button data-open-panel="activity">Review outcomes →</button>'+(t?.reservations?.some(r=>r.state==='held')?'<button data-open-panel="zones">Inspect held zones</button>':'')+'</div></div><div class="attention-graphic">'+orbit([],held||'!',held?(held===1?'held area':'held areas'):'Review needed',held?held+' held; reservations remain protected':'Attention required; outcome needs review')+'</div>');
+}
+function queueHTML(items) {
+  return items.length ? items.map(j => '<div class="event"><div class="event-title"><b>' + escapeText(j.op) + '</b><small>Wait ' + sec(j.waitMs) + '</small></div><div class="id">' + escapeText(j.id) + '</div><div class="reason">' + (j.parentId ? 'Parent reference ' + escapeText(j.parentId) : 'Target resolves at execution') + ' · ' + n(j.nodes) + ' create nodes · ' + mib(j.bytes) + ' MiB</div></div>').join('') : '<p class="empty">No waiting jobs.</p>';
+}
+function eventHTML(items) {
+  return items.length ? items.map(e => '<div class="event"><div class="event-title"><b>' + escapeText(e.op) + '</b><span class="outcome ' + (e.outcome === 'uncertain' ? 'uncertain' : e.outcome !== 'succeeded' ? 'issue' : '') + '">' + escapeText(e.outcome) + '</span></div><div class="id">' + escapeText(e.id) + '</div><div class="reason">' + escapeText(e.detail || 'Reply received') + '</div></div>').join('') : '<p class="empty">No observed outcomes.</p>';
+}
+function paint() {
+  syncTimeline();
+  if(document.body.dataset.mode==='compact') {
+    if(changed('compact',[model.telemetry,model.state,model.identity,model.transport,model.issue,model.events,model.cancelId,stopped,credential,workerId]))paintCompact();
+    return;
+  }
+  const s=model.state,c=s?.current,i=model.identity,t=model.telemetry,tab=model.tab,queue=s?.queue||[];
+  text('identity',i.file||'Waiting for worker identity');
+  text('availability',t?t.workers.filter(w=>w.connected).length+' workers':preview?'Sample data':model.transport==='connected'?'Local worker':'Connection unavailable');
+  paintAttention();
+  if(tab==='overview') {
+    text('active-count',t?t.workers.filter(w=>w.current).length:s?(c?'1':'0'):'—');
+    text('queue-count',t?t.budgets.jobs+'/'+t.budgets.maxJobs:s?(n(s.queued)+(c?1:0))+'/'+(s.limits?.queueJobs||8):'—');
+    text('queue-bytes',t?mib(t.budgets.bytes):s?mib(s.queuedBytes):'—');
+    text('payload-budget',t?'MiB / '+mib(t.budgets.maxBytes)+' MiB budget':s?'MiB / '+mib(s.limits?.queueBytes)+' MiB worker queue':'MiB / coordinator budget');
+  }
+  if(tab==='workers') {
+    view('job',[c,!!s,model.issue,model.transport],()=>{
+      if(!c)return '<div class="job-name">'+(model.issue?'Awaiting review':model.transport!=='connected'?'Waiting for connection':s?'No active job':'Waiting for snapshot')+'</div><p class="muted">'+(s?'Last worker snapshot has no active job.':'Connect the plugin to see current work.')+'</p>';
+      const total=n(c.total),done=Math.min(n(c.done),total);
+      return '<div class="job-name">'+escapeText(c.op)+'</div><div class="id">'+escapeText(c.id)+'</div>'+ '<progress aria-label="Create nodes processed" max="'+(total||1)+'"'+(total?' value="'+done+'"':'')+'></progress><div class="progress-note"><span>'+(total?done+' / '+total+' create nodes':'Progress not measured for this operation')+'</span><span>'+sec(c.ms)+' sampled</span></div>'+ '<div style="margin-top:14px">'+row('Target page',c.target?c.target.page:'Not yet reported')+row('Page ID',c.target?.pageId||'—')+row('Owned nodes',n(c.ownedNodes))+'</div>';
+    });
+    property('cancel','disabled',!c||!!c.cancelled||!!model.cancelId||(!preview&&(!ws||ws.readyState!==WebSocket.OPEN)));
+    text('cancel-note',model.cancelId||c?.cancelled?'Waiting for the final outcome…':c?'Stops this job at its next checkpoint':'No active job');
+    view('worker',i,()=>row('Visible page',i.page||'—')+row('Instance',i.instanceId||'—')+row('Protocol',i.protocol??'—')+row('Build',i.build||'—')+row('File key',i.fileKey||'Unavailable'));
+    if(!t)view('next',queue,()=>queueHTML(queue.slice(0,3)));
+    view('recent',t?t.recent:model.events,()=>eventHTML((t?t.recent||[]:model.events).slice(0,3)));
+  }
+  if(tab==='resources')view('resource-values',[s?.queuedBytes,s?.limits?.queueBytes,s?.fontCacheEntries,s?.yieldWaiters,s?.historyReceiptEntries,c?.ownedNodes],()=>row('Waiting payload',s?mib(s.queuedBytes)+' / '+mib(s.limits?.queueBytes)+' MiB':'—')+row('Font cache entries',s?.fontCacheEntries??'—')+row('Pending yield replies',s?.yieldWaiters??'—')+row('History receipts',s?.historyReceiptEntries??'—')+row('Owned nodes in current job',c?.ownedNodes??0));
+  if(!t&&tab==='queue')view('queue-list',queue,()=>queueHTML(queue));
+  if(!t&&tab==='activity')paintActivity(model.events,null);
+  text('sample',t?'Daemon snapshot '+new Date(t.sampledAt).toLocaleTimeString()+' · live actions + 1 Hz resource samples':model.sampled?'Snapshot at '+new Date(model.sampled).toLocaleTimeString()+' · updates when work changes · elapsed and queue wait are sampled':'Waiting for the first snapshot.');
+  paintCoordinator();
+}
+function paintCoordinator() {
+  const t=model.telemetry,tab=model.tab;
+  paintVisuals(t);
+  if(!t) {
+    if(tab==='resources')markup('daemon-resources','<p class="empty">Waiting for authenticated daemon telemetry.</p>');
+    if(tab==='queue')markup('dispatch-summary','<div class="empty-illustration">'+icon('layers')+'<span><b>Waiting for coordinator</b>Local queue metadata is shown below when available.</span></div>');
+    return;
+  }
+  if(tab==='queue') {
+    view('dispatch-summary',[t.workers.map(w=>[w.connected,!!w.current]),t.lanes?.map(j=>j.state),t.reservations?.map(z=>z.state),t.omittedReservations,t.budgets,t.held],()=>t.lanes?dispatchSummary(t):'<p class="empty">Waiting for a full dispatch snapshot.</p>');
+    view('queue-list',[t.workers,t.lanes,workerId],()=>t.lanes?dispatchBoard(t):'');
+  }
+  if(tab==='workers')view('next',[t.lanes,workerId],()=>{
+    if(!t.lanes)return '<p class="empty">Waiting for coordinator lanes.</p>';
+    return t.lanes.filter(j=>j.state==='queued').slice(0,3).map(j=>'<div data-key="'+escapeText(j.requestId)+'" class="event"><div class="event-title"><b>'+escapeText(j.label||j.laneId)+'</b><span class="tag">'+escapeText(j.state)+'</span></div><div class="id">'+escapeText(j.requestId)+'</div><div class="reason">Page '+escapeText(j.pageId||'Unscoped')+' · '+sec(j.waitMs)+' queued · '+mib(j.bytes)+' MiB</div>'+(j.blockedReason?'<div class="reason">'+escapeText(j.blockedReason)+'</div>':'')+(j.workerId===workerId?'<button data-cancel-request="'+escapeText(j.requestId)+'">Cancel waiting job</button>':'')+'</div>').join('')||'<p class="empty">No waiting jobs.</p>';
+  });
+  if(tab==='resources')view('daemon-resources',[t.resources,t.latency],()=>{
+    const r=t.resources,latency=t.latency;
+    if(!r)return '<p class="empty">Waiting for a full resource snapshot.</p>';
+    return row('Daemon RSS',mib(r.memory.rss)+' MiB')+row('JS heap used',mib(r.memory.heapUsed)+' MiB')+row('External memory',mib(r.memory.external)+' MiB')+row('Event-loop delay p99',Number.isFinite(r.eventLoopDelayMs.p99)?r.eventLoopDelayMs.p99.toFixed(1)+' ms':'Unknown')+row('Queue p95',latency?.count?sec(latency.queueP95Ms):'No samples')+row('Execution p95',latency?.count?sec(latency.executionP95Ms):'No samples')+row('Latency sample count',latency?.count||0)+'<p class="foot">Node process · all workers share these bytes. Event-loop delay: since daemon startup. Latency: last 50 requests in this daemon session; mixed operations, not GPU render time.</p>';
+  });
+  if(tab==='activity')paintActivity((t.recent||[]).slice(0,20),t);
+}
+function observe(msg) {
+  if (msg.type === 'identity' || msg.type === 'status') {
+    for (const key of ['file','page','pageId','fileKey','instanceId','protocol','build']) if (key in msg) model.identity[key] = msg[key];
+    if (msg.uiMode) setMode(msg.uiMode);
+    if (msg.uiTheme) setTheme(msg.uiTheme);
+  }
+  if (msg.type === 'status' || msg.state) {
+    model.state = msg.state || msg; model.sampled = Date.now();
+    for (const j of model.state.queue || []) model.jobs.set(j.id, { op: j.op });
+    if (model.state.current) model.jobs.set(model.state.current.id, { op: model.state.current.op });
+  }
+  if (msg.type === 'busy') {
+    if (msg.busy) model.jobs.set(msg.id, { op: msg.op });
+    if (model.state) {
+      model.state.queued = msg.queued; model.state.queuedBytes = msg.queuedBytes;
+      if (!msg.busy && model.state.current?.id === msg.id) model.state.current = null;
     }
+  }
+  if (msg.type === 'progress' && !msg.state && model.state?.current?.id === msg.id) Object.assign(model.state.current, { done: msg.done, total: msg.total });
+  if(msg.type==='progress') {
+    const w=model.telemetry?.workers.find(w=>w.workerId===workerId);
+    if(w?.current?.wireId===msg.id)updateWorkerProgress({workerId,sessionEpoch:w.sessionEpoch,requestId:w.current.requestId,wireId:msg.id,progress:msg});
+  }
+  if (['result','batch-result'].includes(msg.type)) {
+    if(model.state?.current?.id===msg.id)model.state.current=null;
+    const uncertain = msg.outcome === 'uncertain' || (Array.isArray(msg.results) && msg.results.some(r => r?.outcome === 'uncertain'));
+    const outcome = uncertain ? 'uncertain' : msg.outcome || (msg.error ? 'failed' : 'succeeded');
+    model.events.unshift({ id: String(msg.id || '').slice(0,128), op: model.jobs.get(msg.id)?.op || 'Control / reply', outcome: String(outcome).slice(0,32), detail: String(msg.error || (Array.isArray(msg.results) ? msg.results.filter(r => r.success).length + '/' + msg.results.length + ' commands succeeded' : '')).slice(0,240) });
+    model.events.length = Math.min(20, model.events.length); model.jobs.delete(msg.id);
+    if (model.cancelId === msg.id) model.cancelId = null;
+    if (uncertain) model.issue = 'A request has an uncertain outcome. Inspect its affected nodes and reconcile bridge diagnostics before restarting or retrying.';
+  }
+  while (model.jobs.size > 16) model.jobs.delete(model.jobs.keys().next().value);
+  paintSoon(!['status','progress'].includes(msg.type));
+}
+// Keep transport fencing and watchdogs independent of rendering and visibility.
+let ws = null, generation = 0, reconnectTimer = null, connectTimer = null;
+let stopped = false, busy = null, credential = '', workerId = null, coordinatorEpoch = null, paired = false;
+let deviceCredential = '', storageLoaded = false, pairRequested = false, approvalPending = false, reconnectAttempts = 0;
+const yields = new Map();
+const statusEl = el('status'), dotEl = el('dot');
+function setStatus(label, state) {
+  text('status',label);property('dot','className','dot '+state);model.transport=state;
+  const connection=state==='connected'||preview?'ready':'setup';
+  if(document.body.dataset.connection!==connection)document.body.dataset.connection=connection;
+  property('pairing','hidden',state==='connected'||preview);
+  paintSoon();
+}
+function connectionMessage(title, note) { el('connection-title').textContent = title; el('connection-note').textContent = note; }
+function clearRememberedComputer() { credential = ''; deviceCredential = ''; toMain({ type: 'forget-computer' }); }
 
-    function handleClose() {
-      // Only show reconnecting if we were the active connection
-      if (ws && ws.readyState !== WebSocket.OPEN) {
-        ws = null;
-        setStatus('Reconnecting...', 'connecting');
-        stopKeepalive();
-        parent.postMessage({ pluginMessage: { type: 'disconnected' } }, '*');
-
-        // Fast reconnect (200ms)
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connectParallel, 200);
-      }
+function toMain(msg) { parent.postMessage({ pluginMessage: msg }, '*'); }
+function requestIdentity() { if (!stopped && !ws) toMain({ type: 'identify' }); }
+function schedule() { clearTimeout(reconnectTimer); if (!stopped) reconnectTimer = setTimeout(requestIdentity, Math.min(1000 * Math.pow(2, reconnectAttempts++), 15000)); }
+function send(msg) { if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send(JSON.stringify(msg)); } catch { ws.close(); } } }
+function subscribe() { if (paired) send({ type: 'subscribe', visible: !document.hidden, mode: document.body.dataset.mode }); }
+function connect(identity) {
+  if (preview) { setStatus('Preview · sample worker', 'connected'); return; }
+  if (stopped || ws) return;
+  if (!credential && !deviceCredential && !pairRequested && !el('pair-code').value) {
+    setStatus('Connect this computer', 'connecting');
+    connectionMessage('Connect this computer', 'Connect once. Approve the matching confirmation number in the Insula window, then future connections are automatic.'); return;
+  }
+  if (identity.busy) { setStatus('Waiting for cancellation…', 'connecting'); schedule(); return; }
+  const socket = ws = new WebSocket('ws://127.0.0.1:3456/plugin');
+  const session = ++generation;
+  setStatus('Connecting…', 'connecting');
+  connectionMessage('Connecting…', 'Looking for the Insula companion on this computer.');
+  connectTimer = setTimeout(() => { if (ws === socket && socket.readyState !== WebSocket.OPEN) socket.close(); }, 5000);
+  socket.onopen = () => {
+    clearTimeout(connectTimer); if (ws !== socket) return socket.close();
+    connectTimer=setTimeout(()=>{if(ws===socket&&!paired&&!approvalPending)socket.close(1008,'No Insula handshake. Another Figma client may own port 3456. Start the Insula client and reopen this plugin.');},5000);
+    send({ ...identity, type: pairRequested ? 'pair-request' : 'hello', credential, deviceCredential, remember: true, pairingCode: el('pair-code').value }); setStatus('Connecting…', 'connecting');
+  };
+  socket.onmessage = event => {
+    if (ws !== socket) return;
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'pair-pending') {
+        clearTimeout(connectTimer);approvalPending = true; pairRequested = false;
+        el('connection-challenge').textContent = msg.challenge; el('connection-challenge').hidden = false;
+        el('connect-computer').disabled = true;
+        connectionMessage('Approve this connection', 'Choose Yes in the Insula window only if its confirmation number matches this one.');
+      } else if (msg.type === 'forgotten') { clearRememberedComputer(); }
+      else if (msg.type === 'ready') {
+        clearTimeout(connectTimer);
+        if (msg.deviceCredential) { deviceCredential = msg.deviceCredential; toMain({ type: 'remember-computer', deviceCredential }); }
+        approvalPending = false; pairRequested = false; reconnectAttempts = 0;
+        el('connection-challenge').hidden = true; el('connect-computer').disabled = false;
+        el('connect-computer').textContent = 'Connect this computer';
+        credential = msg.credential; workerId = msg.workerId; coordinatorEpoch = msg.coordinatorEpoch; paired = true;
+        el('pair-code').value = ''; el('pairing').hidden = true; model.issue = '';
+        toMain({ type: 'coordinator-ready', sessionEpoch: msg.sessionEpoch, coordinatorEpoch }); subscribe(); setStatus('Ready · ' + (identity.file || 'current file'), 'connected');
+      } else if (msg.type === 'telemetry' && paired && msg.schema === 1 && msg.coordinatorEpoch === coordinatorEpoch && (!model.telemetry || msg.sequence > model.telemetry.sequence)) { acceptTelemetry(msg); }
+      else if(msg.type==='worker-progress'&&paired&&msg.schema===1&&msg.coordinatorEpoch===coordinatorEpoch&&model.telemetry&&msg.sequence>model.telemetry.sequence) {updateWorkerProgress(msg);model.telemetry.sequence=msg.sequence;}
+      else if (paired && ['cmd','cmd-batch','cancel'].includes(msg.action)) toMain({ ...msg, type: msg.action, session });
     }
-
-    let lastPong = Date.now();
-
-    function startKeepalive() {
-      stopKeepalive();
-      lastPong = Date.now();
-      keepaliveTimer = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          // Check if we got a pong recently (within 8s for faster detection)
-          if (Date.now() - lastPong > 8000) {
-            console.log('No pong received, reconnecting...');
-            ws.close();
-            return;
-          }
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 3000);  // Ping every 3s for faster dead connection detection
+    catch { socket.close(1008, 'Invalid daemon message'); }
+  };
+  socket.onerror = () => socket.close();
+  socket.onclose = event => {
+    if (ws !== socket) return;
+    clearTimeout(connectTimer); ws = null; paired = false; model.telemetry = null;
+      el('connect-computer').disabled = false; el('connection-challenge').hidden = true;
+    if (busy || model.state?.current) model.issue = 'Connection lost during a job. Cancellation was requested; wait for its outcome and inspect bridge diagnostics before retrying.';
+    toMain({ type: 'cancel', id: '*', reason: 'socket closed' });
+    if (event.code === 4401) {
+      stopped = false; pairRequested = false; approvalPending = false; clearRememberedComputer();
+      el('pair-code').value = ''; setStatus('Connection needed', 'connecting');
+      connectionMessage('Connect this computer', event.reason || 'The saved connection is no longer available. Connect again.');
+    } else if (event.code === 4403 || approvalPending) {
+      stopped = false; pairRequested = false; approvalPending = false;
+      setStatus('Connection not approved', 'connecting'); connectionMessage('Try connecting again', event.reason || 'The approval window closed before connection completed.');
+    } else if (event.code === 1008) {
+      stopped = true; credential = ''; model.issue = event.reason || 'The bridge requires attention.';
+      setStatus(event.reason || 'Connection needs attention', 'error'); statusEl.title = statusEl.textContent;
+      connectionMessage('Connection needs attention', model.issue); el('connect-computer').textContent = 'Retry connection';
+    } else {
+      setStatus('Waiting for companion…', 'connecting');
+      connectionMessage('Waiting for the companion', 'Insula will reconnect automatically. If it stays offline, open Advanced pairing & setup below.'); schedule();
     }
-
-    function stopKeepalive() {
-      if (keepaliveTimer) {
-        clearInterval(keepaliveTimer);
-        keepaliveTimer = null;
-      }
-    }
-
-    // Legacy function name for compatibility
-    function connect() { connectParallel(); }
-
-    // Receive results from plugin main thread
-    window.onmessage = (event) => {
-      const msg = event.data.pluginMessage;
-      if (!msg) return;
-
-      if (msg.type === 'result') {
-        // Send result back to CLI via WebSocket
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'result',
-            id: msg.id,
-            result: msg.result,
-            error: msg.error
-          }));
-        }
-      }
-
-      // Batch result forwarding (CRITICAL for render-batch stability)
-      if (msg.type === 'batch-result') {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'batch-result',
-            id: msg.id,
-            results: msg.results
-          }));
-        }
-      }
-    };
-
-    // Start connection
-    connect();
-  </script>
+  };
+}
+window.onmessage = event => {
+  if (event.source !== parent && event.origin !== 'https://www.figma.com') return;
+  const msg = event.data && event.data.pluginMessage;
+  if (!msg) return;
+  if (preview && msg.type === 'telemetry') { acceptTelemetry(msg); return; }
+  if (preview && msg.type === 'worker-progress') { updateWorkerProgress(msg); return; }
+  if (msg.type === 'ui-mode') { setMode(msg.mode); return; }
+  if (msg.type === 'ui-theme') { setTheme(msg.theme); return; }
+  if (preview && msg.type === 'preview-theme') { document.documentElement.className = msg.dark ? 'figma-dark' : 'figma-light'; return; }
+  if (msg.type === 'pairing-saved') {
+    el('pairing-storage-note').textContent = msg.saved ? 'This computer reconnects automatically.' : 'Connected for this session. Figma could not save the pairing; reconnect next time.'; return;
+  }
+  if (msg.type === 'identity') {
+    if (!storageLoaded) { deviceCredential = msg.deviceCredential || ''; storageLoaded = true; }
+    observe(msg); connect(msg); return;
+  }
+  if (msg.type === 'yield') {
+    yields.set(msg.k, setTimeout(() => { yields.delete(msg.k); toMain({ type: 'yield-timeout', k: msg.k }); }, 10000));
+    toMain({ type: 'yielded', k: msg.k }); return;
+  }
+  if (msg.type === 'yield-finished') { clearTimeout(yields.get(msg.k)); yields.delete(msg.k); return; }
+  if (msg.session != null && msg.session !== generation && !preview) return;
+  if (msg.type === 'busy') {
+    busy = msg.busy ? msg.id : null;
+    if (ws && paired && !stopped) setStatus(busy ? 'Working · ' + msg.op : 'Ready · ' + (model.identity.file || 'current file'), 'connected');
+  }
+  if (['busy','progress','result','batch-result','status'].includes(msg.type)) { observe(msg); send(msg); }
+};
+el('mode').addEventListener('change', event => setMode(event.target.value, true));
+for(const id of ['ui-theme','compact-theme']) el(id).addEventListener('change', event => setTheme(event.target.value,true));
+for (const id of ['zone-page','zone-page-full']) el(id).addEventListener('change', event => { model.zoneKey=event.target.value; paintSoon(); });
+document.querySelectorAll('[data-icon]').forEach(button=>{button.innerHTML=icon(button.dataset.icon)+button.innerHTML;});
+document.querySelectorAll('[data-metric-icon]').forEach(label=>{label.innerHTML=icon(label.dataset.metricIcon)+label.innerHTML;});
+el('connect-computer').addEventListener('click', () => {
+  if (ws) return; stopped = false; pairRequested = !deviceCredential; reconnectAttempts = 0;
+  el('pair-code').value = ''; clearTimeout(reconnectTimer); requestIdentity();
+});
+el('pair').addEventListener('click', () => { if (ws || !el('pair-code').value) return; stopped = false; pairRequested = false; clearTimeout(reconnectTimer); requestIdentity(); });
+el('forget').addEventListener('click', () => {
+  if (paired) send({ type: 'forget-computer' });
+});
+document.addEventListener('click', event => { const id = event.target?.getAttribute?.('data-cancel-request'); if (id && paired) send({ type: 'coordinator-cancel', requestId: id }); const panel=event.target?.getAttribute?.('data-open-panel'); if(panel==='activity'||panel==='zones')showPanel(panel); });
+el('details').addEventListener('click', () => { setMode(model.transport==='connected'?'console':'standard', true); if(model.compactAttention)showPanel('activity'); });
+el('cancel').addEventListener('click', () => {
+  const c = model.state?.current; if (!c || el('cancel').disabled) return;
+  model.cancelId = c.id; toMain({ type: 'cancel', id: c.id, reason: 'operator' }); paintSoon();
+});
+function showPanel(tab) {
+  model.tab = tab;
+  if(tab==='zones') { const held=model.telemetry?.reservations?.find(r=>r.state==='held'); if(held){model.zoneKey=held.fileKey+'/'+held.pageId;} }
+  document.querySelectorAll('[data-tab]').forEach(b => { const pressed=String(b.dataset.tab===tab);if(b.getAttribute('aria-pressed')!==pressed)b.setAttribute('aria-pressed',pressed); });
+  document.querySelectorAll('.panel').forEach(p => property(p.id,'hidden',p.id!==model.tab));
+  text('section-title',{overview:'Overview',workers:'Workers',zones:'Zones',timeline:'Timeline',queue:'Dispatch',resources:'Resources',activity:'Activity'}[tab]); paintSoon();
+}
+document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.tab)));
+el('filter').addEventListener('change', event => { model.filter = event.target.value; paintSoon(); });
+document.addEventListener('visibilitychange', () => { document.body.dataset.hidden=String(document.hidden); subscribe(); if(document.hidden)stopPainting();else paintSoon(); });
+window.addEventListener('beforeunload', () => {
+  disposed=true; stopped = true; clearTimeout(reconnectTimer); clearTimeout(connectTimer);
+  yields.forEach(clearTimeout); yields.clear();
+  stopPainting();
+  toMain({ type: 'cancel', id: '*', reason: 'UI closing' }); if (ws) ws.close();
+});
+el('preview-label').hidden = !preview;
+el('pairing').hidden = preview;
+document.body.dataset.connection = preview ? 'ready' : 'setup';
+requestIdentity(); paintSoon();
+</script>
 </body>
 </html>

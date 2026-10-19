@@ -1,0 +1,41 @@
+{
+  "op": "create",
+  "parent": "page",
+  "spec": {
+    "type": "FRAME",
+    "name": "iPhone 17 — Bridge Test",
+    "w": 402,
+    "h": 874,
+    "fill": "#FFFFFF",
+    "layout": "COL",
+    "justify": "center",
+    "items": "center",
+    "clip": true,
+    "children": [
+      {
+        "type": "FRAME",
+        "name": "Button / done",
+        "layout": "ROW",
+        "justify": "center",
+        "items": "center",
+        "px": 28,
+        "py": 14,
+        "radius": 12,
+        "fill": "#0E5A6D",
+        "effects": [
+          { "type": "DROP_SHADOW", "color": "#0E5A6D", "opacity": 0.24, "x": 0, "y": 2, "blur": 8 }
+        ],
+        "children": [
+          {
+            "type": "TEXT",
+            "name": "Label",
+            "text": "done!",
+            "size": 16,
+            "weight": "semibold",
+            "color": "#FFFFFF"
+          }
+        ]
+      }
+    ]
+  }
+}

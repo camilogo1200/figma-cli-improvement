@@ -32,7 +32,8 @@
     "url": "https://github.com/silships/figma-cli/issues"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js",
+    "test": "node bridge/launcher.mjs build && node --test tests/*.test.js",
+    "test:bridge": "node bridge/launcher.mjs build && node --test tests/bridge-*.test.js",
     "test:live": "node tests/live/parity-harness.mjs && node examples/autolayout-patterns.mjs",
     "test:parity": "node tests/live/parity-harness.mjs",
     "examples": "node examples/autolayout-patterns.mjs"
@@ -48,5 +49,8 @@
     "pngjs": "^7.0.0",
     "ws": "^8.16.0",
     "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
   }
 }

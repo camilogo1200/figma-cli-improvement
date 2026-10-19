@@ -20,6 +20,7 @@ function run(args, opts = {}) {
 // trivial eval. When Figma is not connected the CLI exits 1 → execFileSync
 // throws → we skip. Only a real round-trip (exit 0, 'ok') unlocks the test.
 function figmaReady() {
+  if (process.env.FIGMA_CLI_LIVE_TESTS !== '1') return false;
   try { return /ok/.test(run(['eval', `(async () => 'ok')()`], { timeout: 20_000 })); } catch { return false; }
 }
 
