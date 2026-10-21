@@ -55,7 +55,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "ws": "^8.16.0"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"
