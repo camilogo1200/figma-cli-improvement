@@ -45,7 +45,7 @@ function harness({ scheduled=false }={}) {
 
 test('UI connects only to the canonical port and sends the actual sandbox identity', () => {
   const h = harness(); assert.equal(h.messages[0].type, 'identify');
-  const ws = h.connect(); assert.equal(h.sockets.length, 1); assert.equal(ws.url, 'ws://127.0.0.1:3456/plugin');
+  const ws = h.connect(); assert.equal(h.sockets.length, 1); assert.equal(ws.url, 'ws://127.0.0.1:3049/plugin');
   assert.equal(ws.sent[0].build, 'test'); assert.equal(ws.sent[0].protocol, 4);
   ws.receive({ action: 'cmd', id: 'a', cmd: { op: 'ping' } });
   assert.equal(h.messages.at(-1).session, 1);
@@ -461,7 +461,7 @@ test('an incompatible daemon cannot leave the UI waiting indefinitely for worker
   const h=harness();h.main({type:'identity',protocol:4,build:'test',busy:false});const ws=h.sockets[0];ws.open();
   const deadline=[...h.timers.entries()].find(([,t])=>t.ms===5000);assert.ok(deadline);
   h.timers.delete(deadline[0]);deadline[1].fn();
-  assert.equal(ws.readyState,3);assert.match(h.elements.get('status').textContent,/Another Figma client may own port 3456/);
+  assert.equal(ws.readyState,3);assert.match(h.elements.get('status').textContent,/Another program may own port 3049/);
   assert.equal(h.timers.size,0);h.window.beforeunload();
 });
 
@@ -469,11 +469,11 @@ test('the stealth banner shows only product, status and port, and opens the deta
   const h=harness(),ws=h.connect();
   h.main({type:'ui-mode',mode:'stealth'});
   assert.equal(h.document.body.dataset.mode,'stealth');
-  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Connected - 3456');
+  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Connected - 3049');
   assert.deepEqual([...h.elements.get('stealth').querySelectorAll('button')].map(b=>b.textContent),['Show details']);
-  h.main(snapshot());assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Working - 3456');
+  h.main(snapshot());assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Working - 3049');
   h.main({type:'batch-result',session:1,id:'job-1',outcome:'partial',results:[{success:false,outcome:'uncertain'}]});
-  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Needs review - 3456');
+  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Needs review - 3049');
   h.elements.get('stealth-details').click();
   assert.equal(h.document.body.dataset.mode,'compact');assert.equal(h.messages.at(-1).type,'ui-mode');assert.equal(h.messages.at(-1).mode,'compact');
   h.document.click({target:h.document.querySelector('#compact [data-window="stealth"]')});

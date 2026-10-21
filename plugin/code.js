@@ -21,7 +21,7 @@ var uiStorageWrite = Promise.resolve();
 var rememberedCredential = '';
 async function openConsole() {
   try {
-    var savedPairing = await figma.clientStorage.getAsync('insula-computer-pairing-v1');
+    var savedPairing = await figma.clientStorage.getAsync('ultimate-computer-pairing-v1');
     if (typeof savedPairing === 'string' && /^[a-f0-9]{64}$/.test(savedPairing)) rememberedCredential = savedPairing;
   } catch (e) {}
   try {
@@ -61,10 +61,10 @@ function resizeWindow(width, height, dx, dy) {
   } catch (e) {}
 }
 
-var VERSION = '2.2.5-insula-structured';
+var VERSION = '3.0.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = '91b519c106e299b37761d2e0'; // stamped by bridge/launcher.mjs build
+var BUILD = 'ee39b07c06ccf5663858f851'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -453,7 +453,7 @@ async function createNode(spec) {
     if (spec.visible != null) copy.visible = !!spec.visible;
     return copy;
   }
-  // SVG markup (Insula addition): { type: 'SVG', svg: '<svg …>', w, h } becomes a
+  // SVG markup (figma-cli-ultimate addition): { type: 'SVG', svg: '<svg …>', w, h } becomes a
   // frame of vectors via figma.createNodeFromSvg, rescaled to w. Colour and
   // stroke width are expected to be baked into the markup by the caller.
   if (String(spec.type || '').toUpperCase() === 'SVG') {
@@ -631,7 +631,7 @@ var OPS = {
     if (!page || page.type !== 'PAGE') throw failure('wrong-page', 'Reservation page missing', 'not-started');
     if (typeof page.loadAsync === 'function') await page.loadAsync();
     requireFileKey(cmd.expectedFileKey);
-    var raw = page.getPluginData('insula-reservation-' + cmd.leaseId), receipt;
+    var raw = page.getPluginData('ultimate-reservation-' + cmd.leaseId), receipt;
     try { receipt = JSON.parse(raw); } catch (e) { throw failure('unverifiable', 'No durable plugin receipt; keep this reservation held', 'not-started'); }
     if (receipt.token !== cmd.token || receipt.requestId !== cmd.requestId || receipt.fileKey !== cmd.expectedFileKey || !['committed', 'rolled-back'].includes(receipt.state)) throw failure('unverifiable', 'Plugin receipt is incomplete or does not match this lease', 'not-started');
     if (receipt.state === 'committed') {
@@ -676,7 +676,7 @@ var OPS = {
     }
     var node = await checked(figma.getNodeByIdAsync(receipt.id));
     if (!node || node.name !== receipt.name || node.parent !== figma.currentPage ||
-        figma.currentPage.name.indexOf('__Insula memory disposable ') !== 0) {
+        figma.currentPage.name.indexOf('__Ultimate memory disposable ') !== 0) {
       throw failure('history-guard', 'Tracked test root changed or is outside its disposable page', 'not-started');
     }
     // No await between anchor/remove/undo: user input cannot interleave here.
@@ -876,7 +876,7 @@ var OPS = {
   },
 
   /**
-   * Pages (Insula addition). The file holds one page per client app
+   * Pages (figma-cli-ultimate addition). The file holds one page per client app
    * ("Customer app", "Portería app"); create/select/rename them here.
    *   { op: 'page' }                                   -> list pages, current flagged
    *   { op: 'page', action: 'create', name, select }   -> new page (made current unless select === false)
@@ -1008,7 +1008,7 @@ var OPS = {
     return { frame: { id: root.id, name: root.name, w: Math.round(root.width), h: Math.round(root.height) }, texts: texts, targets: targets, overflow: overflow };
   },
 
-  // ---- Insula additions (insula-figma-cli) ----
+  // ---- figma-cli-ultimate additions ----
 
   // Installed font families (optionally filtered), with their styles. Lets a
   // build script pick a monospace family that really exists instead of
@@ -1088,7 +1088,7 @@ var OPS = {
     return { hash: img.hash, width: size && size.width, height: size && size.height };
   },
 
-  // ---- end Insula additions ----
+  // ---- end figma-cli-ultimate additions ----
 
   exportImage: async function (cmd) {
     var node = cmd.id ? await checked(figma.getNodeByIdAsync(cmd.id)) : figma.currentPage.selection[0];
@@ -1291,7 +1291,7 @@ var coordinatorSession = null, usedLeases = Object.create(null);
 function saveZoneReceipt(state, nodeIds) {
   if (!current || !current.lease || !current.zonePage) return;
   var l = current.lease;
-  current.zonePage.setPluginData('insula-reservation-' + l.leaseId, JSON.stringify({ state: state, requestId: l.requestId,
+  current.zonePage.setPluginData('ultimate-reservation-' + l.leaseId, JSON.stringify({ state: state, requestId: l.requestId,
     token: l.token, fileKey: l.fileKey, rect: l.rect, gutter: l.gutter, nodeIds: nodeIds || [] }));
 }
 function validZoneRect(r) { return r && ['x', 'y', 'width', 'height'].every(function (k) { return Number.isFinite(r[k]) && Math.abs(r[k]) <= 1e7; }) && r.width > 0 && r.height > 0; }
@@ -1444,7 +1444,7 @@ function validateCommand(cmd) {
   if (cmd.trackHistory) {
     requireFileKey(cmd.expectedFileKey);
     if (cmd.op !== 'create' || !cmd.spec || cmd.specs || typeof cmd.spec.name !== 'string' || cmd.spec.name.indexOf('__history_') !== 0 ||
-        cmd.parent !== figma.currentPage.id || figma.currentPage.name.indexOf('__Insula memory disposable ') !== 0) {
+        cmd.parent !== figma.currentPage.id || figma.currentPage.name.indexOf('__Ultimate memory disposable ') !== 0) {
       throw failure('history-guard', 'History tracking accepts one named test root on the current disposable page', 'not-started');
     }
   }
@@ -1656,7 +1656,7 @@ figma.ui.onmessage = async function (msg) {
     var pairingValue = msg.type === 'forget-computer' ? '' : msg.deviceCredential;
     if (typeof pairingValue !== 'string' || (pairingValue && !/^[a-f0-9]{64}$/.test(pairingValue))) return;
     rememberedCredential = pairingValue;
-    uiStorageWrite = uiStorageWrite.then(function () { return figma.clientStorage.setAsync('insula-computer-pairing-v1', pairingValue); })
+    uiStorageWrite = uiStorageWrite.then(function () { return figma.clientStorage.setAsync('ultimate-computer-pairing-v1', pairingValue); })
       .then(function () { figma.ui.postMessage({ type: 'pairing-saved', saved: true }); })
       .catch(function () { figma.ui.postMessage({ type: 'pairing-saved', saved: false }); });
     return;

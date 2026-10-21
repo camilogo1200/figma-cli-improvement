@@ -2,14 +2,13 @@
 // Public Node HTTP APIs, finite deadlines, bounded response bodies, no automatic replay.
 import { request as httpRequest } from 'node:http';
 import { WebSocket as SocketClient } from 'ws';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { buildIdentity } from '../src/lib/bridge-build.js';
-import { LIMITS, deadline, executionBudget } from '../src/lib/bridge-protocol.js';
+import { DEFAULT_PORT, LIMITS, deadline, executionBudget } from '../src/lib/bridge-protocol.js';
 import { TOKEN_FILE } from '../src/lib/bridge-state.js';
 
 const LOCAL = buildIdentity();
-const PORT = Number(process.env.DAEMON_PORT || 3456);
+export const PORT = Number(process.env.FIGMA_ULTIMATE_PORT || DEFAULT_PORT);
 export class BridgeError extends Error {
   constructor(kind, message, details = {}) { super(message); this.name = 'BridgeError'; Object.assign(this, { kind, ...details }); }
 }
@@ -54,8 +53,10 @@ export function request(path, { payload, timeoutMs = 3000, signal, port = PORT, 
   });
 }
 export function assertDaemon(info, local = LOCAL) {
-  if (info.root !== local.root || info.daemonBuild !== local.daemonBuild || info.protocol !== local.protocol || info.mode !== 'safe') {
-    throw new BridgeError('build-mismatch', 'Wrong or stale daemon. Use node bridge/launcher.mjs diagnostics, then restart the owning daemon.', { outcome: 'not-started' });
+  // The code fingerprint decides, not the folder: a script's local install and a
+  // global install of the same release talk to the same daemon.
+  if (info.daemonBuild !== local.daemonBuild || info.protocol !== local.protocol || info.mode !== 'plugin') {
+    throw new BridgeError('build-mismatch', 'Wrong or stale daemon. Run figma-ultimate doctor, then figma-ultimate restart.', { outcome: 'not-started' });
   }
 }
 export function health() { return request('/health'); }
@@ -184,71 +185,5 @@ export class HighwayClient {
     try { this.ws.send(JSON.stringify({ type: 'close' })); } catch {}
     this.fail('Closed by this client');
     try { this.ws.close(1000); } catch {}
-  }
-}
-
-// Only act as a CLI when run directly — importing this module from a build
-// script must not consume that script's argv.
-const isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href;
-const [, , sub, arg] = process.argv;
-
-if (isMain) {
-  try {
-    let out;
-    switch (sub) {
-      case 'ping':    out = await cmd({ op: 'ping' }); break;
-      case 'info':    out = await cmd({ op: 'info' }); break;
-      case 'health':  out = await health(); break;
-      case 'diagnostics': out = await diagnostics(); break;
-      case 'pair': out = await coordinate({ op: 'pair' }); break;
-      case 'workers': out = await coordinate({ op: 'status' }); break;
-      case 'lanes': out = await coordinate({ op: 'lanes' }); break;
-      case 'highways': out = await post({ action: 'highway', cmd: { op: 'list' } }); break;
-      case 'layout': {
-        if (!arg) throw new Error('layout requires a JSON file with specs and a target file or lane');
-        const { specs, spec, ...options } = JSON.parse(readFileSync(arg, 'utf8'));
-        out = await createLayout(specs || spec, options); break;
-      }
-      case 'submit': {
-        if (!arg) throw new Error('submit requires an envelope JSON file');
-        out = await post(JSON.parse(readFileSync(arg, 'utf8'))); break;
-      }
-      case 'lifecycle': {
-        if (!arg) throw new Error('lifecycle requires a JSON request file');
-        out = await lifecycle(JSON.parse(readFileSync(arg, 'utf8'))); break;
-      }
-      case 'find':    out = await cmd({ op: 'find', name: arg || '' }); break;
-      case 'children': {
-        const kids = await cmd({ op: 'children', ...(arg ? { prefix: arg } : {}) }, 120000);
-        const seen = new Map();
-        for (const k of kids) seen.set(k.name, (seen.get(k.name) || 0) + 1);
-        const duplicates = [...seen].filter(([, n]) => n > 1).map(([name, n]) => ({ name, n }));
-        out = { count: kids.length, duplicates, children: kids };
-        break;
-      }
-      case 'tree':    out = await cmd({ op: 'tree', id: arg, depth: 4 }); break;
-      case 'cancel':  out = await cmd({ op: 'cancel', ...(arg ? { id: arg } : {}) }); break;
-      case 'export': {
-        const res = await cmd({ op: 'exportImage', id: arg, scale: 2 }, 90000);
-        const dest = process.argv[4] || `figma-${String(arg || 'selection').replace(':', '-')}.png`;
-        writeFileSync(dest, Buffer.from(res.base64, 'base64'));
-        out = { saved: dest, id: res.id, name: res.name };
-        break;
-      }
-      case 'send': {
-        if (!arg) throw new Error('send requires a JSON file path');
-        const spec = JSON.parse(readFileSync(arg, 'utf8'));
-        out = Array.isArray(spec) ? await cmdBatch(spec) : await cmd(spec);
-        break;
-      }
-      default:
-        throw new Error(`Unknown subcommand "${sub}". Use: pair | workers | lanes | highways | layout | submit | ping | info | health | diagnostics | find | children | tree | cancel | export | send`);
-    }
-    console.log(JSON.stringify(out, null, 2));
-  } catch (e) {
-    console.error('✗ ' + e.message + (e.kind ? ` [${e.kind}]` : ''));
-    if (e.results) console.error(JSON.stringify(e.results.map((r, index) => ({ index, success: r.success,
-      created: r.result?.created?.map(n => ({ id: n.id, name: n.name })), error: r.error, kind: r.kind, outcome: r.outcome, details: r.details })), null, 2));
-    process.exit(1);
   }
 }

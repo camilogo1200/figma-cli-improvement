@@ -20,11 +20,11 @@ function requireIdle(bridge) {
 export function validateLifecycleTarget(cmd, identity) {
   if (!/^[A-Za-z0-9]{1,128}$/.test(cmd.expectedFileKey || '') || !/^[A-Za-z0-9]{1,128}$/.test(cmd.sourceFileKey || '') ||
       cmd.expectedFileKey === cmd.sourceFileKey) throw fail('invalid-request', 'Distinct exact disposable/source file keys are required');
-  if (typeof cmd.expectedFileName !== 'string' || !cmd.expectedFileName.startsWith('__Insula disposable ') || cmd.expectedFileName.length > 200) {
+  if (typeof cmd.expectedFileName !== 'string' || !cmd.expectedFileName.startsWith('__Ultimate disposable ') || cmd.expectedFileName.length > 200) {
     throw fail('invalid-request', 'An explicit disposable file name is required');
   }
   if (identity?.fileKey !== cmd.expectedFileKey || !identity.instanceId ||
-      identity.file !== cmd.expectedFileName || !identity.file.startsWith('__Insula disposable ')) {
+      identity.file !== cmd.expectedFileName || !identity.file.startsWith('__Ultimate disposable ')) {
     throw fail('wrong-file', 'Connected worker identity does not match the disposable copy');
   }
 }

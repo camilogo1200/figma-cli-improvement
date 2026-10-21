@@ -27,5 +27,7 @@ export function buildIdentity(root = PROJECT_ROOT) {
   }
   return { root: join(root, 'src'), version: JSON.parse(read('package.json')).version, protocol: PROTOCOL,
     pluginBuild, pluginStamped: code.includes("var BUILD = '" + pluginBuild + "';"),
-    daemonBuild: hash([...files('src'), ...files('bridge'), ['package.json', read('package.json')], ['package-lock.json', read('package-lock.json')], ['pluginBuild', pluginBuild]]) };
+    // No lockfile: npm leaves it out of installed packages, and the same sources
+    // must fingerprint identically in a clone and in an install.
+    daemonBuild: hash([...files('src'), ...files('bridge'), ['package.json', read('package.json')], ['pluginBuild', pluginBuild]]) };
 }

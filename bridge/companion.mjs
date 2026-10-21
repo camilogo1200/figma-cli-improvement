@@ -21,7 +21,7 @@ export async function supervise() {
   const config = join(STATE_DIR, 'companion.json');
   const lock = createServer(socket => socket.end());
   const id = createHash('sha256').update(STATE_DIR.toLowerCase()).digest('hex').slice(0, 20);
-  const address = process.platform === 'win32' ? '\\\\.\\pipe\\insula-figma-' + id : join(STATE_DIR, 'companion.sock');
+  const address = process.platform === 'win32' ? '\\\\.\\pipe\\figma-cli-ultimate-' + id : join(STATE_DIR, 'companion.sock');
   const acquired = await new Promise((resolve, reject) => {
     lock.once('error', e => e.code === 'EADDRINUSE' ? resolve(false) : reject(e));
     lock.listen(address, () => resolve(true));

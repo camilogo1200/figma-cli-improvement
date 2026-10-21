@@ -8,8 +8,8 @@ import { pathToFileURL } from 'node:url';
 const fail = (kind, message) => { throw new bridge.BridgeError(kind, message, { outcome: 'not-started' }); };
 // By default each client gets its own highway (private port, queue and holds), so
 // it never waits behind or inherits another agent's failure. Set
-// INSULA_FIGMA_TRANSPORT=shared, or pass { mode: 'shared' }, for the shared lobby path.
-export function forFile(fileKey, transport = bridge, { mode = process.env.INSULA_FIGMA_TRANSPORT || 'highway', agentId = 'file-client', label } = {}) {
+// FIGMA_ULTIMATE_TRANSPORT=shared, or pass { mode: 'shared' }, for the shared lobby path.
+export function forFile(fileKey, transport = bridge, { mode = process.env.FIGMA_ULTIMATE_TRANSPORT || 'highway', agentId = 'file-client', label } = {}) {
   if (typeof fileKey !== 'string' || !/^[\w:.-]{1,128}$/.test(fileKey)) fail('invalid-request', 'An explicit Figma file key is required.');
   let opening = null;
   function road() {
@@ -73,7 +73,7 @@ export function forFile(fileKey, transport = bridge, { mode = process.env.INSULA
 
 export async function main(args = process.argv.slice(2)) {
   const rest = [...args], flag = rest.indexOf('--file-key');
-  const fileKey = flag < 0 ? process.env.INSULA_FIGMA_FILE_KEY : rest.splice(flag, 2)[1];
+  const fileKey = flag < 0 ? process.env.FIGMA_ULTIMATE_FILE_KEY : rest.splice(flag, 2)[1];
   const [sub = 'info', arg] = rest, client = forFile(fileKey);
   let result;
   try {

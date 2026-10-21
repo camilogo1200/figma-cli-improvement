@@ -130,7 +130,7 @@ test('automatic jobs plan fresh space, queue within a file, and execute across f
 });
 
 test('named lanes persist, bind work to their page, and cannot be removed while busy', async t => {
-  const dir=mkdtempSync(join(tmpdir(),'insula-lanes-'));
+  const dir=mkdtempSync(join(tmpdir(),'ultimate-lanes-'));
   t.after(()=>{if(dirname(resolve(dir))!==resolve(tmpdir())||realpathSync(dir)!==resolve(dir))throw Error('Unsafe cleanup');rmSync(dir,{recursive:true});});
   const journalPath=join(dir,'journal.json'), c=setup(t,{journalPath}), a=worker(c,'fileA',{pageId:'visible'}), b=worker(c,'fileB');
   a.ws.receive({type:'lane-control',id:'create-ui',op:'create-lane',label:'Checkout',pageId:'other-page'});
@@ -243,7 +243,7 @@ test('queue expiry releases only never-dispatched reservations; stale epochs can
   finish(a); await p;
 });
 test('uncertain work holds geometry across restart, deduplicates, and quarantines its file', async t => {
-  const dir = mkdtempSync(join(tmpdir(), 'insula-coordinator-'));
+  const dir = mkdtempSync(join(tmpdir(), 'ultimate-coordinator-'));
   t.after(() => { if (dirname(resolve(dir)) !== resolve(tmpdir()) || realpathSync(dir) !== resolve(dir)) throw Error('Unsafe cleanup'); rmSync(dir, { recursive: true }); });
   const journalPath = join(dir, 'receipts.json'), c = setup(t, { journalPath }), a = worker(c);
   const p = submit(c, a, 'r1'); const rejected = assert.rejects(p, { outcome: 'uncertain' }); await flush();
@@ -357,7 +357,7 @@ test('oversized telemetry trims history and sketches before it would drop a live
 
 
 test('remembered pairing survives daemon restart and new plugin instances without exposing its token', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'insula-pairing-'));
+  const dir = mkdtempSync(join(tmpdir(), 'ultimate-pairing-'));
   t.after(() => { if (dirname(resolve(dir)) !== resolve(tmpdir()) || realpathSync(dir) !== resolve(dir)) throw Error('Unsafe cleanup'); rmSync(dir, { recursive: true }); });
   const pairingPath = join(dir, 'pairing.json'), c = setup(t, { pairingPath });
   const first = worker(c, 'A', { remember: true });

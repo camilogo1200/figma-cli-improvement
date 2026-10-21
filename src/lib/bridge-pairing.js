@@ -72,3 +72,38 @@ export function windowsPairingApproval() {
 }
 
 export const pairingChallenge = () => String(randomInt(100000, 1000000));
+
+// A pairing request waits here until someone answers it: `figma-ultimate setup`
+// (or `approve`) in a terminal, or, on Windows, the approval dialog. While a
+// terminal is watching, the dialog is not opened, so one question is asked once.
+export class PairingApprovals {
+  constructor({ dialog = process.platform === 'win32' ? windowsPairingApproval() : null, now = Date.now } = {}) {
+    Object.assign(this, { dialog, now, pending: new Map(), watchedAt: 0, serial: 0 });
+  }
+  watching() { return this.now() - this.watchedAt < 5000; }
+  approve = ({ file, challenge, signal }) => new Promise(resolve => {
+    if (this.pending.size >= 8) return resolve(false);
+    const id = 'p' + (++this.serial), dialogStop = new AbortController();
+    const settle = approved => {
+      if (!this.pending.delete(id)) return;
+      dialogStop.abort(); signal?.removeEventListener('abort', aborted); resolve(approved);
+    };
+    const aborted = () => settle(false);
+    this.pending.set(id, { id, file, challenge, createdAt: this.now(), settle });
+    signal?.addEventListener('abort', aborted, { once: true });
+    if (signal?.aborted) return settle(false);
+    if (this.dialog && !this.watching()) {
+      this.dialog({ file, challenge, signal: dialogStop.signal }).then(settle, () => {});
+    }
+  });
+  // Listing marks a terminal as present, which keeps the dialog closed.
+  list() {
+    this.watchedAt = this.now();
+    return [...this.pending.values()].map(({ id, file, challenge, createdAt }) => ({ id, file, challenge, createdAt }));
+  }
+  answer(id, approved) {
+    const request = this.pending.get(String(id));
+    if (!request) return false;
+    request.settle(approved === true); return true;
+  }
+}

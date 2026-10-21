@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { LIMITS } from '../src/lib/bridge-protocol.js';
 import { geometricFixture } from './live/navigation-stress.mjs';
 
-const source = readFileSync(process.env.INSULA_PLUGIN_TEST_SOURCE || new URL('../plugin/code.js', import.meta.url), 'utf8');
+const source = readFileSync(process.env.FIGMA_ULTIMATE_PLUGIN_TEST_SOURCE || new URL('../plugin/code.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function until(predicate) {
   for (let i = 0; i < 500; i++) { if (predicate()) return; await flush(); }
@@ -444,7 +444,7 @@ test('file-key verification refuses missing/wrong keys and guards execution afte
 });
 
 test('native undo probe consumes one owned receipt without retaining nodes or replay payloads', async () => {
-  const h = harness(); h.figma.fileKey = 'copyKey'; h.page.name = '__Insula memory disposable test';
+  const h = harness(); h.figma.fileKey = 'copyKey'; h.page.name = '__Ultimate memory disposable test';
   const result = (await h.done(h.send({ op: 'create', expectedFileKey: 'copyKey', trackHistory: true,
     parent: h.page.id, spec: { name: '__history_1' }, select: false }))).result;
   const root = h.nodes.get(result.created[0].id); let undoCalls = 0, commits = 0;
@@ -461,7 +461,7 @@ test('native undo probe consumes one owned receipt without retaining nodes or re
 });
 
 test('native undo failures report uncertainty and redo/reload never simulate native actions', async () => {
-  const h = harness(); h.figma.fileKey = 'copyKey'; h.page.name = '__Insula memory disposable test';
+  const h = harness(); h.figma.fileKey = 'copyKey'; h.page.name = '__Ultimate memory disposable test';
   const result = (await h.done(h.send({ op: 'create', expectedFileKey: 'copyKey', trackHistory: true,
     parent: h.page.id, spec: { name: '__history_2' }, select: false }))).result;
   h.figma.triggerUndo = () => { throw new Error('native failure'); };
@@ -478,7 +478,7 @@ test('history tracking refuses normal pages and mixed batches before mutation', 
   const h = harness(); h.figma.fileKey = 'copyKey';
   const create = { op: 'create', expectedFileKey: 'copyKey', trackHistory: true, parent: h.page.id, spec: { name: '__history_1' } };
   assert.equal((await h.done(h.send(create))).kind, 'history-guard'); assert.equal(h.made, 0);
-  h.page.name = '__Insula memory disposable test';
+  h.page.name = '__Ultimate memory disposable test';
   assert.equal((await h.done(h.send(null, { type: 'cmd-batch', cmds: [create] }))).kind, 'invalid-request');
   assert.equal(h.made, 0);
 });
@@ -612,16 +612,16 @@ test('progress contains bounded queue metadata and the resolved creation page wi
 
 
 test('computer pairing restores and serializes saves without leaking into document or status', async () => {
-  const storage = new Map([['insula-computer-pairing-v1', 'a'.repeat(64)]]);
+  const storage = new Map([['ultimate-computer-pairing-v1', 'a'.repeat(64)]]);
   const h = harness({ clientStorage: { async getAsync(key) { return storage.get(key); }, async setAsync(key, value) { storage.set(key, value); } } });
   await flush(); await h.figma.ui.onmessage({ type: 'identify' });
   assert.equal(h.messages.find(m => m.type === 'identity').deviceCredential, 'a'.repeat(64));
   assert.ok(h.messages.filter(m => m.type === 'status').every(m => !JSON.stringify(m).includes('a'.repeat(64))));
   await h.figma.ui.onmessage({ type: 'remember-computer', deviceCredential: 'b'.repeat(64) });
   await h.figma.ui.onmessage({ type: 'forget-computer' }); await flush();
-  assert.equal(storage.get('insula-computer-pairing-v1'), ''); assert.equal(h.made, 0);
+  assert.equal(storage.get('ultimate-computer-pairing-v1'), ''); assert.equal(h.made, 0);
   await h.figma.ui.onmessage({ type: 'remember-computer', deviceCredential: 'invalid' }); await flush();
-  assert.equal(storage.get('insula-computer-pairing-v1'), '');
+  assert.equal(storage.get('ultimate-computer-pairing-v1'), '');
 });
 
 

@@ -3,25 +3,30 @@ import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-export const LEGACY_STATE_DIR = join(homedir(), '.figma-ds-cli');
-export const DEFAULT_STATE_DIR = join(homedir(), '.insula-figma-cli');
+export const DEFAULT_STATE_DIR = join(homedir(), '.figma-cli-ultimate');
+// Releases before 3.0 kept the same durable files under their working name;
+// `figma-ultimate setup` moves them here once.
+export const PREVIOUS_STATE_DIR = join(homedir(), '.insula-figma-cli');
+// The original figma-cli keeps its own daemon token and PID here. Never share it.
+export const SHARED_STATE_DIR = join(homedir(), '.figma-ds-cli');
 const canonical = path => {
   const absolute = existsSync(path) ? realpathSync(path) : resolve(path);
   return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
 };
-export const STATE_DIR = resolve(process.env.FIGMA_CLI_STATE_DIR || DEFAULT_STATE_DIR);
-if (canonical(STATE_DIR) === canonical(LEGACY_STATE_DIR)) {
-  throw new Error('Insula cannot use the shared .figma-ds-cli state directory. Unset FIGMA_CLI_STATE_DIR, run figma.mjs migrate-state, then reinstall the companion.');
+export const STATE_DIR = resolve(process.env.FIGMA_ULTIMATE_STATE_DIR || DEFAULT_STATE_DIR);
+if (canonical(STATE_DIR) === canonical(SHARED_STATE_DIR)) {
+  throw new Error('figma-cli-ultimate cannot use the original figma-cli state directory (.figma-ds-cli). Unset FIGMA_ULTIMATE_STATE_DIR.');
 }
 export const TOKEN_FILE = join(STATE_DIR, '.daemon-token');
 export const PID_FILE = join(STATE_DIR, 'daemon.pid');
 export const DURABLE_STATE_FILES = ['coordinator-journal.json', 'paired-computers.json'];
+export function previousStatePending() {
+  if (canonical(STATE_DIR) !== canonical(DEFAULT_STATE_DIR)) return false;
+  return DURABLE_STATE_FILES.some(file => existsSync(join(PREVIOUS_STATE_DIR, file)) && !existsSync(join(STATE_DIR, file)));
+}
 export function assertStateMigrated() {
-  if (canonical(STATE_DIR) !== canonical(DEFAULT_STATE_DIR)) return;
-  for (const file of DURABLE_STATE_FILES) {
-    if (existsSync(join(LEGACY_STATE_DIR, file)) && !existsSync(join(STATE_DIR, file))) {
-      throw new Error('Preserve Insula pairing and reservations before starting: run node bridge/launcher.mjs migrate-state with the old Insula daemon stopped.');
-    }
+  if (previousStatePending()) {
+    throw new Error('Pairings and reservations from the previous version have not been moved yet. Run: figma-ultimate setup');
   }
 }
 export function ensureToken() {

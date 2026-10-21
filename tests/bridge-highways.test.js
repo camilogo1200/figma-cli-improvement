@@ -52,7 +52,7 @@ async function open(t, s, agentId = 'agent-1') {
 test('the lobby opens a private loopback port announced only to the paired plugin; tickets are enforced', async t => {
   const s = setup(t);
   const lobby = await s.highways.open({ fileKey: 'fileA', agentId: 'builder' });
-  assert.ok(lobby.port > 0 && lobby.port !== 3456); assert.match(lobby.ticket, /^[a-f0-9]{64}$/);
+  assert.ok(lobby.port > 0 && lobby.port !== 3049); assert.match(lobby.ticket, /^[a-f0-9]{64}$/);
   const announced = s.control.sent.find(m => m.type === 'open-highway');
   assert.deepEqual([announced.highwayId, announced.port, announced.ticket, announced.sessionEpoch], [lobby.highwayId, lobby.port, lobby.ticket, lobby.highwayId]);
   const intruder = plugin(lobby.port, 'f'.repeat(64));

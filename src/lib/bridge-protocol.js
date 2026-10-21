@@ -1,5 +1,7 @@
 // Wire limits are mirrored in plugin/code.js (checked by the regression suite).
 export const PROTOCOL = 4;
+// The lobby. The plugin window dials this port (mirrored in plugin/ui.html).
+export const DEFAULT_PORT = 3049;
 export const LIMITS = Object.freeze({
   messageBytes: 8 * 1024 * 1024,
   resultBytes: 32 * 1024 * 1024,

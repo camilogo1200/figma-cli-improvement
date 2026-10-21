@@ -1,6 +1,6 @@
 {
   "name": "figma-cli-ultimate",
-  "id": "insula-figma-cli-structured",
+  "id": "figma-cli-ultimate",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",

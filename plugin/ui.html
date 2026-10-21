@@ -277,7 +277,7 @@ body[data-mode="stealth"]>#stealth { display:flex; flex:1; align-items:center; g
 </style>
 </head>
 <body data-mode="standard" data-theme="ios">
-<section id="stealth" aria-label="figma CLI status"><span id="stealth-text" role="status">figma CLI - Connecting - 3456</span><button id="stealth-details" type="button">Show details</button></section>
+<section id="stealth" aria-label="figma CLI status"><span id="stealth-text" role="status">figma CLI - Connecting - 3049</span><button id="stealth-details" type="button">Show details</button></section>
 <div id="preview-label" hidden>Preview · sample data · no connection to Figma</div>
 <header class="top">
   <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg></div>
@@ -290,7 +290,7 @@ body[data-mode="stealth"]>#stealth { display:flex; flex:1; align-items:center; g
   <p id="connection-note" class="muted" role="status">Connect once. figma-cli-ultimate will remember this computer when you reopen the plugin.</p>
   <p id="connection-challenge" hidden></p>
   <button id="connect-computer" class="primary">Connect this computer</button>
-  <details><summary>Advanced pairing &amp; setup</summary><p>If the companion is unavailable, install it once from the project folder:</p><code>node bridge/launcher.mjs companion-install</code><p>For manual pairing, run <code>node bridge/launcher.mjs pair</code> with the project launcher and paste its two-minute code.</p><label>Pairing code <input id="pair-code" type="password" autocomplete="off" spellcheck="false" maxlength="24"></label><button id="pair">Use pairing code</button></details>
+  <details><summary>Advanced pairing &amp; setup</summary><p>Not connecting? Run this once in a terminal; it starts the bridge and asks you to approve this plugin:</p><code>figma-ultimate setup</code><p>For manual pairing, run <code>figma-ultimate pair</code> and paste its two-minute code.</p><label>Pairing code <input id="pair-code" type="password" autocomplete="off" spellcheck="false" maxlength="24"></label><button id="pair">Use pairing code</button></details>
 </section>
 <section id="compact" aria-label="Compact worker dashboard"><div class="compact-head"><span class="mark" title="figma-cli-ultimate" aria-label="figma-cli-ultimate">f</span><label class="compact-theme"><span class="sr-only">Color theme</span><select id="compact-theme" aria-label="Compact color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><button id="details" title="Open the full worker console">Open console ↗</button><button class="icon-button" data-window="stealth" data-icon="minimize" title="Minimize to the banner" aria-label="Minimize to the banner"></button><button class="icon-button" data-window="close" data-icon="close" title="Close the bridge window" aria-label="Close the bridge window"></button></div><div id="compact-focus" class="compact-focus"></div><div id="compact-metrics" class="compact-metrics"></div><div id="compact-network" class="compact-network"></div><p class="compact-caption"><span id="compact-live">Connecting</span> · <span id="compact-caption"></span></p></section>
 <div class="layout">
@@ -322,7 +322,7 @@ body[data-mode="stealth"]>#stealth { display:flex; flex:1; align-items:center; g
 const el = id => document.getElementById(id);
 const preview = typeof location !== 'undefined' && ['127.0.0.1', 'localhost'].includes(location.hostname) && new URLSearchParams(location.search).get('preview') === '1';
 const model = { identity: {}, state: null, telemetry: null, history: [], sparks: new Map(), markup: new Map(), views: new Map(), zoneKey: '', events: [], jobs: new Map(), tab: 'overview', filter: 'all', sampled: null, cancelId: null, issue: '', transport: 'connecting', sketches: new Map() };
-const DAEMON_PORT = 3456;
+const DAEMON_PORT = 3049;
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n = value => Number.isFinite(value) && value >= 0 ? value : 0;
 const sec = value => (n(value) / 1000).toFixed(1) + ' s';
@@ -923,11 +923,11 @@ function connect(identity) {
   const socket = ws = new WebSocket('ws://127.0.0.1:' + DAEMON_PORT + '/plugin');
   const session = ++generation;
   setStatus('Connecting…', 'connecting');
-  connectionMessage('Connecting…', 'Looking for the figma-cli-ultimate companion on this computer.');
+  connectionMessage('Connecting…', 'Looking for figma-cli-ultimate on this computer (port ' + DAEMON_PORT + ').');
   connectTimer = setTimeout(() => { if (ws === socket && socket.readyState !== WebSocket.OPEN) socket.close(); }, 5000);
   socket.onopen = () => {
     clearTimeout(connectTimer); if (ws !== socket) return socket.close();
-    connectTimer=setTimeout(()=>{if(ws===socket&&!paired&&!approvalPending)socket.close(1008,'No figma-cli-ultimate handshake. Another Figma client may own port 3456. Start the companion and reopen this plugin.');},5000);
+    connectTimer=setTimeout(()=>{if(ws===socket&&!paired&&!approvalPending)socket.close(1008,'No figma-cli-ultimate handshake. Another program may own port 3049. Run figma-ultimate doctor, then reopen this plugin.');},5000);
     send({ ...identity, type: pairRequested ? 'pair-request' : 'hello', credential, deviceCredential, remember: true, pairingCode: el('pair-code').value }); setStatus('Connecting…', 'connecting');
   };
   socket.onmessage = event => {
@@ -938,7 +938,7 @@ function connect(identity) {
         clearTimeout(connectTimer);approvalPending = true; pairRequested = false;
         el('connection-challenge').textContent = msg.challenge; el('connection-challenge').hidden = false;
         el('connect-computer').disabled = true;
-        connectionMessage('Approve this connection', 'Choose Yes in the figma-cli-ultimate window only if its confirmation number matches this one.');
+        connectionMessage('Approve this connection', 'Approve it in the terminal running figma-ultimate (or the Windows dialog) only if its confirmation number matches this one.');
       } else if (msg.type === 'forgotten') { clearRememberedComputer(); }
       else if (msg.type === 'ready') {
         clearTimeout(connectTimer);
@@ -978,8 +978,8 @@ function connect(identity) {
       setStatus(event.reason || 'Connection needs attention', 'error'); statusEl.title = statusEl.textContent;
       connectionMessage('Connection needs attention', model.issue); el('connect-computer').textContent = 'Retry connection';
     } else {
-      setStatus('Waiting for companion…', 'connecting');
-      connectionMessage('Waiting for the companion', 'figma-cli-ultimate will reconnect automatically. If it stays offline, open Advanced pairing & setup below.'); schedule();
+      setStatus('Waiting for the bridge…', 'connecting');
+      connectionMessage('Waiting for the bridge', 'figma-cli-ultimate will reconnect automatically. If it stays offline, run figma-ultimate doctor in a terminal.'); schedule();
     }
   };
 }

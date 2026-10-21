@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LEGACY_STATE_DIR, STATE_DIR, DURABLE_STATE_FILES } from '../src/lib/bridge-state.js';
+import { PREVIOUS_STATE_DIR, STATE_DIR, DURABLE_STATE_FILES } from '../src/lib/bridge-state.js';
 import { ReservationJournal } from '../src/lib/bridge-coordinator.js';
 import { PairedComputers } from '../src/lib/bridge-pairing.js';
 
-// Called only after the launcher has verified that Insula's port is free.
+// Called only after setup has stopped the previous version's daemon.
 // Retain the originals for recovery. Never migrate an administrative token,
-// PID or supervisor config: those may now belong to another Figma client.
-export function migrateState({ source = LEGACY_STATE_DIR, target = STATE_DIR } = {}) {
+// PID or supervisor config: those belong to the process that wrote them.
+export function migrateState({ source = PREVIOUS_STATE_DIR, target = STATE_DIR } = {}) {
   new ReservationJournal(join(source, 'coordinator-journal.json'));
   new PairedComputers(join(source, 'paired-computers.json'));
   const files = DURABLE_STATE_FILES.filter(file => existsSync(join(source, file)))

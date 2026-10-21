@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { documentLifecycle, fileKeyFromUrl, selectDocumentTarget, validateLifecycleTarget, connectDocument } from '../src/lib/bridge-lifecycle.js';
 
-const cmd = { op: 'reload', expectedFileKey: 'copyKey', sourceFileKey: 'sourceKey', expectedFileName: '__Insula disposable test' };
+const cmd = { op: 'reload', expectedFileKey: 'copyKey', sourceFileKey: 'sourceKey', expectedFileName: '__Ultimate disposable test' };
 function fixture() {
   const state = { fileKey: 'copyKey', instanceId: 'old', file: cmd.expectedFileName, capabilities: { undo: 'owned-remove-restore', redo: false } };
   const bridge = { session: { identity: state }, connected: () => true,
