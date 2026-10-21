@@ -9,6 +9,62 @@ import { PROTOCOL } from '../src/lib/bridge-protocol.js';
 
 const flush = () => new Promise(r => setImmediate(r));
 
+test('failed page navigation never journals a file hold and preserves the native diagnostic', async t => {
+  const c = setup(t), a = worker(c);
+  const job = c.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } });
+  const rejected = assert.rejects(job, { kind: 'page-navigation', outcome: 'failed' });
+  await flush();
+  assert.equal(c.journal.fileHolds.size, 0, 'Navigation must not leave a hold even if the daemon crashes');
+  const navigation = { phase: 'switch', requestedPageId: 'heavy', currentPageId: 'old',
+    elapsedMs: 10451, artworkChanged: false, cause: 'Native page switch timed out' };
+  finish(a, { error: navigation.cause, kind: 'page-navigation', outcome: 'failed', details: { navigation } });
+  await rejected;
+  assert.equal(c.quarantined('fileA'), false); assert.equal(c.recoveryRequired, false);
+  assert.equal(c.snapshot().recent[0].pageId, 'heavy');
+  assert.deepEqual(c.snapshot().recent[0].navigation, navigation);
+  const read = c.dispatch('cmd', { cmd: { op: 'page', action: 'list' } });
+  await flush(); finish(a); await read;
+});
+
+test('navigation-only batches leave no hold; batches containing artwork mutations still do', async t => {
+  for (const mutation of [false, true]) {
+    const c = setup(t), a = worker(c);
+    const cmds = [{ op: 'page', action: 'select', id: 'heavy' }];
+    if (mutation) cmds.unshift({ op: 'update', id: 'existing', name: 'Changed' });
+    const job = c.dispatch('cmd-batch', { cmds }); await flush();
+    assert.equal(c.journal.fileHolds.size, mutation ? 1 : 0);
+    const wire = a.ws.sent.find(m => m.action === 'cmd-batch');
+    a.ws.receive({ type: 'batch-result', id: wire.id, outcome: 'partial',
+      results: cmds.map(cmd => cmd.op === 'update' ? { success: true, result: {} }
+        : { success: false, error: 'Page unavailable', kind: 'page-navigation', outcome: 'failed' }) });
+    await job; assert.equal(c.quarantined('fileA'), mutation);
+  }
+});
+
+test('a page-switch failure before a skipped writer releases only that batch hold', async t => {
+  const c = setup(t), a = worker(c);
+  const job = c.dispatch('cmd-batch', { cmds: [
+    { op: 'page', action: 'select', id: 'heavy' }, { op: 'update', id: 'existing' },
+  ] });
+  await flush(); assert.equal(c.journal.fileHolds.size, 1);
+  const wire = a.ws.sent.find(m => m.action === 'cmd-batch');
+  a.ws.receive({ type: 'batch-result', id: wire.id, outcome: 'partial', results: [
+    { success: false, error: 'Native rejection', outcome: 'failed', kind: 'page-navigation' },
+    { success: false, error: 'Skipped after earlier failure', outcome: 'not-started', kind: 'skipped' },
+  ] });
+  await job; assert.equal(c.quarantined('fileA'), false);
+});
+
+test('page creation, rename and update failures still preserve file holds', async t => {
+  for (const action of ['create', 'rename', 'update']) {
+    const c = setup(t), a = worker(c);
+    const job = c.dispatch('cmd', { cmd: { op: 'page', action, id: 'p', name: 'Changed' } });
+    const rejected = assert.rejects(job, { outcome: 'partial' }); await flush();
+    finish(a, { error: 'Native failure after change', outcome: 'partial' }); await rejected;
+    assert.equal(c.quarantined('fileA'), true);
+  }
+});
+
 test('each arriving batch gets a transient lane; batches stay ordered within each file', async t => {
   const c=setup(t),a=worker(c),b=worker(c,'fileB');
   const commands=[{op:'update',id:'existing'},{op:'exportImage',id:'existing'}];
@@ -199,11 +255,14 @@ test('uncertain work holds geometry across restart, deduplicates, and quarantine
   assert.equal(restart.snapshot().held, 1); assert.equal(b.ws.sent.filter(m => m.action).length, 0);
   assert.ok(!readFileSync(journalPath, 'utf8').includes('PRIVATE SPEC'));
 });
-test('unscoped queued writers cannot bypass newly admitted reservations; snapshots are bounded metadata', async t => {
+test('writers without a zone are not refused by zones; overlapping zones still are; snapshots are bounded metadata', async t => {
   const c = setup(t, { resources: () => ({ memory: { rss: 123 } }) }), a = worker(c);
-  const old = c.dispatch('cmd', { cmd: { op: 'update', id: 'old' } }); const rejected = assert.rejects(old, { kind: 'protected-file' });
-  const p = submit(c, a, 'r1'); await rejected; await flush(); finish(a); await p;
-  await assert.rejects(c.dispatch('cmd', { cmd: { op: 'remove', id: 'other-agent-node' } }), { kind: 'protected-file' });
+  const p = submit(c, a, 'r1'); await flush();
+  // Admitted while the zone is running: it cannot know the zone's node ids, and the
+  // zone job validates its own area and rolls back on interference.
+  const update = c.dispatch('cmd', { cmd: { op: 'update', id: 'old' } });
+  finish(a); await p; await flush(); finish(a, { result: { id: 'old' } }); await update;
+  await assert.rejects(submit(c, a, 'r2', 'B', { rect: { x: 250, y: 0, width: 100, height: 100 } }), { kind: 'zone-conflict' });
   await assert.rejects(submit(c, a, 'r1'), { kind: 'duplicate-request' });
   const full = c.snapshot(); assert.equal(full.resources.memory.rss, 123); assert.equal(full.latency.count, 2);
   assert.ok(!JSON.stringify(full).includes('PRIVATE SPEC')); assert.equal(c.snapshot(true).reservations, undefined);
@@ -237,6 +296,63 @@ test('held reservations unlock only after matching read-only plugin proof', asyn
   assert.equal(command.cmd.op, 'inspectReservation');
   a.ws.receive({ type: 'result', id: command.id, result: { requestId: 'r1', token: r.token, fileKey: 'fileA', state: 'rolled-back', nodeIds: [] } });
   assert.equal((await proof).state, 'released'); assert.equal(c.recoveryRequired, false);
+  const receipt = c.snapshot().recent[0];
+  assert.equal(receipt.op, 'inspectReservation'); assert.equal(receipt.category, 'query'); assert.equal(receipt.target.pageId, 'page1');
+});
+
+test('the map keeps live and recently finished zones, counts older ones, and still protects their area', async t => {
+  const c = setup(t), a = worker(c); clearInterval(c.timer);
+  const job = submit(c, a, 'r1'); await flush();
+  const wire = a.ws.sent.filter(m => m.action === 'cmd').at(-1);
+  a.ws.receive({ type: 'busy', id: wire.id, busy: true, op: 'create' });
+  a.ws.receive({ type: 'status', queued: 0, current: { id: wire.id, op: 'create', target: { pageId: 'page1', page: 'Checkout', parentId: 'page1', kind: 'write', bounds: null } } });
+  a.ws.receive({ type: 'page-sketch', pageId: 'page1', page: 'Checkout', roots: 2, cols: 4, rows: 2, extent: { x: 0, y: 0, width: 400, height: 200 }, cells: 'f0', measuredAt: 5 });
+  a.ws.receive({ type: 'page-sketch', pageId: 'injected', page: 'X', cols: 4, rows: 2, cells: '<b>' });
+  a.ws.receive({ type: 'page-sketch', pageId: 'huge', page: 'X', cols: 100, rows: 100, cells: '' });
+  let s = c.snapshot();
+  assert.deepEqual(s.workers[0].current.target, { pageId: 'page1', page: 'Checkout', nodeId: 'page1', kind: 'write', bounds: null });
+  assert.equal(s.workers[0].current.category, 'change'); assert.equal(s.workers[0].current.agentId, 'agent1');
+  assert.deepEqual(s.sketches.map(x => [x.fileKey, x.pageId, x.cells]), [['fileA', 'page1', 'f0']], 'invalid sketches are dropped');
+  assert.equal(s.reservations[0].state, 'running');
+  a.ws.receive({ type: 'result', id: wire.id, result: { created: [{ id: 'n1' }] } }); await job;
+  assert.equal(c.snapshot().reservations[0].state, 'committed', 'a just-finished zone stays on the map');
+  c.journal.records.get('r1').completedAt = Date.now() - 121000;
+  s = c.snapshot();
+  assert.equal(s.reservations.length, 0); assert.deepEqual(s.earlierCommitted, [{ fileKey: 'fileA', count: 1 }]);
+  await assert.rejects(submit(c, a, 'r2', 'B', { rect: { x: 250, y: 0, width: 100, height: 100 } }), { kind: 'zone-conflict' }, 'off the map, its area is still protected');
+});
+
+test('reads and placement scans leave receipts with target, size and count but never contents', async t => {
+  const c = setup(t), a = worker(c, 'fileA', { pageId: 'p' }); clearInterval(c.timer);
+  const read = c.dispatch('cmd', { cmd: { op: 'find', name: 'Card' } }); await flush();
+  const wire = a.ws.sent.filter(m => m.action === 'cmd').at(-1);
+  a.ws.receive({ type: 'busy', id: wire.id, busy: true, op: 'find' });
+  a.ws.receive({ type: 'progress', id: wire.id, done: 0, total: 0, state: { current: { id: wire.id, op: 'find', target: { pageId: 'p', page: 'Visible page', parentId: 'p', kind: 'read' } } } });
+  a.ws.receive({ type: 'result', id: wire.id, result: [{ id: '1', name: 'PRIVATE NAME' }, { id: '2', name: 'PRIVATE NAME' }] });
+  await read;
+  const receipt = c.snapshot().recent[0];
+  assert.equal(receipt.category, 'query'); assert.equal(receipt.items, 2); assert.ok(receipt.responseBytes > 40);
+  assert.deepEqual(receipt.target, { pageId: 'p', page: 'Visible page', nodeId: 'p', kind: 'read' });
+  assert.equal(c.snapshot().timeline[0].op, 'find');
+  const info = c.dispatch('cmd', { cmd: { op: 'info' } }); await flush(); finish(a, { result: { file: 'PRIVATE FILE' } }); await info;
+  assert.equal(c.snapshot().recent[0].op, 'info'); assert.ok(c.snapshot().recent[0].responseBytes > 0);
+  const layout = c.dispatch('cmd', { cmd: { op: 'create', spec: { w: 100, h: 100 } } }); await flush();
+  finish(a, { result: { fileKey: 'fileA', pageId: 'p', bounds: [{ x: 0, y: 0, width: 10, height: 10 }] } }); await flush();
+  finish(a); await layout;
+  const [created, scan] = c.snapshot().recent;
+  assert.deepEqual([created.op, scan.op], ['create', 'layoutInfo']);
+  assert.match(scan.label, /^Placement scan/); assert.equal(scan.items, 1); assert.equal(scan.target.pageId, 'p'); assert.equal(scan.category, 'query');
+  assert.doesNotMatch(JSON.stringify(c.snapshot()), /PRIVATE/);
+});
+
+test('oversized telemetry trims history and sketches before it would drop a live snapshot', async t => {
+  const c = setup(t), a = worker(c); clearInterval(c.timer);
+  for (let i = 0; i < 200; i++) c.record({ id: 'r' + i, workerId: a.ready.workerId, laneId: 'lane-' + i, label: 'x'.repeat(500), op: 'find', category: 'query', outcome: 'succeeded', completedAt: Date.now(), executionMs: 1 });
+  for (let i = 0; i < 12; i++) a.ws.receive({ type: 'page-sketch', pageId: 'p' + i, page: 'Page ' + i, roots: 1, cols: 64, rows: 64, extent: { x: 0, y: 0, width: 10, height: 10 }, cells: 'f'.repeat(1024) });
+  assert.ok(JSON.stringify(c.snapshot()).length > 131072, 'fixture exceeds the wire budget');
+  const wire = c.telemetryWire(false);
+  assert.ok(wire && Buffer.byteLength(wire) <= 131072);
+  const sent = JSON.parse(wire); assert.equal(sent.workers.length, 1); assert.ok(sent.timeline.length < 200);
 });
 
 

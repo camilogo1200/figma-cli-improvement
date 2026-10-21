@@ -20,7 +20,7 @@ export function assertStateMigrated() {
   if (canonical(STATE_DIR) !== canonical(DEFAULT_STATE_DIR)) return;
   for (const file of DURABLE_STATE_FILES) {
     if (existsSync(join(LEGACY_STATE_DIR, file)) && !existsSync(join(STATE_DIR, file))) {
-      throw new Error('Preserve Insula pairing and reservations before starting: run node tools/figma-cli-insula/figma.mjs migrate-state with the old Insula daemon stopped.');
+      throw new Error('Preserve Insula pairing and reservations before starting: run node bridge/launcher.mjs migrate-state with the old Insula daemon stopped.');
     }
   }
 }

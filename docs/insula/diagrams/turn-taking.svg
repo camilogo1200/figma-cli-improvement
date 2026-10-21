@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <pattern id="wait" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#fbe3e1"/><rect width="3" height="8" fill="#e8a6a0"/></pattern>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5b6475"/></marker>
+    <style>
+      .title { font-size: 26px; font-weight: 600; fill: #1c1c1e; }
+      .subtitle { font-size: 15px; fill: #636366; }
+      .panel { font-size: 17px; font-weight: 700; fill: #1c1c1e; }
+      .row { font-size: 13px; font-weight: 600; fill: #1f2937; }
+      .rowSub { font-size: 12px; fill: #636366; }
+      .axis { font-size: 12px; fill: #636366; }
+      .note { font-size: 13px; fill: #374151; }
+      .bad { font-size: 13px; font-weight: 600; fill: #8f1d17; }
+      .good { font-size: 13px; font-weight: 600; fill: #1d6b33; }
+      .h { font-size: 15px; font-weight: 600; fill: #1c1c1e; }
+      .s { font-size: 12.5px; fill: #4b5563; }
+    </style>
+  </defs>
+  <rect width="1400" height="820" fill="#ffffff"/>
+  <text class="title" x="40" y="50">Two agents, one file: waiting vs. taking turns</text>
+  <text class="subtitle" x="40" y="76">Figma runs one plugin thread per file. Highways do not add threads; they decide who has to wait, and for how long.</text>
+
+  <!-- Inset: inside the plugin -->
+  <rect x="40" y="104" width="330" height="560" rx="16" fill="#f4f6fb" stroke="#d1d8e5"/>
+  <text class="h" x="60" y="134">Inside the plugin</text>
+  <text class="s" x="60" y="156">One queue per channel, one thread.</text>
+  <rect x="60" y="180" width="290" height="44" rx="10" fill="#ffffff" stroke="#d1d8e5"/><text class="row" x="74" y="207">file channel queue</text>
+  <rect x="60" y="236" width="290" height="44" rx="10" fill="#ffffff" stroke="#8b4ad2"/><text class="row" x="74" y="263" fill="#8b4ad2">highway A queue</text>
+  <rect x="270" y="246" width="18" height="24" rx="3" fill="#8b4ad2"/><rect x="294" y="246" width="18" height="24" rx="3" fill="#8b4ad2" opacity=".55"/>
+  <rect x="60" y="292" width="290" height="44" rx="10" fill="#ffffff" stroke="#087f8c"/><text class="row" x="74" y="319" fill="#087f8c">highway B queue</text>
+  <rect x="294" y="302" width="18" height="24" rx="3" fill="#087f8c"/>
+  <path d="M205 342 V384" stroke="#5b6475" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="60" y="390" width="290" height="112" rx="12" fill="#ffffff" stroke="#3f64a6" stroke-width="1.5"/>
+  <text class="h" x="76" y="418">One plugin thread</text>
+  <text class="s" x="76" y="440">The job holding the turn runs. At each</text>
+  <text class="s" x="76" y="458">pause point (100 nodes, or between batch</text>
+  <text class="s" x="76" y="476">items) it hands over if anyone waits, and</text>
+  <text class="s" x="76" y="494">rejoins the end of the turn queue.</text>
+  <text class="s" x="60" y="532">Only the turn holder runs between awaits,</text>
+  <text class="s" x="60" y="550">so a job's state never changes under it.</text>
+  <text class="s" x="60" y="578">Zone jobs on the same page ignore each</text>
+  <text class="s" x="60" y="596">other's hidden scaffolding: their zones are</text>
+  <text class="s" x="60" y="614">disjoint, and each one validates itself.</text>
+  <text class="s" x="60" y="642">With nobody waiting, a job keeps the turn.</text>
+
+  <!-- Before -->
+  <rect x="400" y="104" width="960" height="262" rx="16" fill="#fdf7f6" stroke="#efc6c2"/>
+  <text class="panel" x="420" y="134">Before: one queue per file</text>
+  <text class="row" x="420" y="178">Agent A</text><text class="rowSub" x="420" y="196">create · 1,008 nodes</text>
+  <rect x="560" y="166" width="696" height="30" rx="6" fill="#8b4ad2"/>
+  <text class="row" x="420" y="236">Agent B</text><text class="rowSub" x="420" y="254">page switch · 0.1 s of work</text>
+  <rect x="589" y="224" width="667" height="30" rx="6" fill="url(#wait)"/>
+  <rect x="1256" y="224" width="6" height="30" rx="2" fill="#087f8c"/>
+  <text class="bad" x="760" y="244">waiting behind A's whole batch</text>
+  <text class="row" x="420" y="294">Plugin thread</text>
+  <rect x="560" y="282" width="696" height="22" rx="5" fill="#8b4ad2" opacity=".75"/><rect x="1256" y="282" width="6" height="22" rx="2" fill="#087f8c"/>
+  <path d="M560 322 H1300" stroke="#9aa3b2"/>
+  <g class="axis"><text x="556" y="342">0 s</text><text x="701" y="342">5</text><text x="846" y="342">10</text><text x="991" y="342">15</text><text x="1136" y="342">20</text><text x="1281" y="342">25</text></g>
+
+  <!-- After -->
+  <rect x="400" y="388" width="960" height="276" rx="16" fill="#f3faf5" stroke="#bfe0c8"/>
+  <text class="panel" x="420" y="418">After: highways take turns every 100 nodes</text>
+  <text class="row" x="420" y="462">Highway A</text><text class="rowSub" x="420" y="480">create · 1,008 nodes</text>
+  <g fill="#8b4ad2">
+    <rect x="560" y="450" width="66" height="30" rx="5"/><rect x="632" y="450" width="146" height="30" rx="5"/>
+    <rect x="784" y="450" width="144" height="30" rx="5"/><rect x="934" y="450" width="334" height="30" rx="5"/>
+  </g>
+  <!-- pause points every 100 nodes; A hands over only when someone is waiting -->
+  <g stroke="#ffffff" stroke-width="1.5" opacity=".7">
+    <path d="M705 452 V478 M857 452 V478 M1005 452 V478 M1078 452 V478 M1152 452 V478 M1226 452 V478"/>
+  </g>
+  <text class="row" x="420" y="520">Highway B</text><text class="rowSub" x="420" y="538">three short jobs</text>
+  <g>
+    <rect x="589" y="508" width="37" height="30" rx="5" fill="url(#wait)"/><rect x="626" y="508" width="6" height="30" rx="2" fill="#087f8c"/>
+    <rect x="763" y="508" width="15" height="30" rx="5" fill="url(#wait)"/><rect x="778" y="508" width="6" height="30" rx="2" fill="#087f8c"/>
+    <rect x="908" y="508" width="20" height="30" rx="5" fill="url(#wait)"/><rect x="928" y="508" width="6" height="30" rx="2" fill="#087f8c"/>
+  </g>
+  <text class="good" x="960" y="528">each runs at the next 100-node boundary</text>
+  <text class="row" x="420" y="578">Plugin thread</text>
+  <g opacity=".75">
+    <rect x="560" y="566" width="66" height="22" rx="4" fill="#8b4ad2"/><rect x="626" y="566" width="6" height="22" fill="#087f8c"/>
+    <rect x="632" y="566" width="146" height="22" rx="4" fill="#8b4ad2"/><rect x="778" y="566" width="6" height="22" fill="#087f8c"/>
+    <rect x="784" y="566" width="144" height="22" rx="4" fill="#8b4ad2"/><rect x="928" y="566" width="6" height="22" fill="#087f8c"/>
+    <rect x="934" y="566" width="334" height="22" rx="4" fill="#8b4ad2"/>
+  </g>
+  <path d="M560 606 H1300" stroke="#9aa3b2"/>
+  <g class="axis"><text x="556" y="626">0 s</text><text x="701" y="626">5</text><text x="846" y="626">10</text><text x="991" y="626">15</text><text x="1136" y="626">20</text><text x="1281" y="626">25</text></g>
+  <text class="note" x="420" y="652">White ticks are pause points; A hands over only when B is waiting. The total work is the same, so A ends at about the same time.</text>
+
+  <!-- Footer -->
+  <rect x="40" y="688" width="1320" height="108" rx="12" fill="#f4f6fb"/>
+  <text class="h" x="60" y="716">What was measured</text>
+  <text class="s" x="60" y="740">Before highways (live run, 2026-10-20): a page switch queued behind layout jobs took 28.7–31.0 s end to end, but only 34–169 ms inside the</text>
+  <text class="s" x="60" y="758">navigation itself. Regression tests now prove that a short highway job finishes while a long job on another channel is still running, and that</text>
+  <text class="s" x="60" y="776">two long jobs alternate slices. The "after" timing above is illustrative: real slice lengths depend on what the nodes contain.</text>
+</svg>

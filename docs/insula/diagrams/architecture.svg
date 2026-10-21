@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="960" viewBox="0 0 1400 960" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5b6475"/></marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0066cc"/></marker>
+    <style>
+      .title { font-size: 26px; font-weight: 600; fill: #1c1c1e; }
+      .subtitle { font-size: 15px; fill: #636366; }
+      .h { font-size: 17px; font-weight: 600; fill: #1c1c1e; }
+      .s { font-size: 13px; fill: #4b5563; }
+      .tiny { font-size: 12px; fill: #636366; }
+      .label { font-size: 12.5px; fill: #374151; font-weight: 600; }
+      .panelTitle { font-size: 14px; font-weight: 700; fill: #3f64a6; letter-spacing: .06em; }
+      .pill { font-size: 12px; font-weight: 600; }
+      .step { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    </style>
+  </defs>
+  <rect width="1400" height="960" fill="#ffffff"/>
+  <text class="title" x="40" y="50">How figma-cli-ultimate connects agents to Figma</text>
+  <text class="subtitle" x="40" y="76">One lobby, one private highway per agent and file, one paired plugin window per file.</text>
+
+  <!-- Agents -->
+  <text class="panelTitle" x="40" y="126">AGENTS</text>
+  <rect x="40" y="148" width="260" height="76" rx="12" fill="#f6f2fd" stroke="#8b4ad2" stroke-width="1.5"/>
+  <text class="h" x="58" y="178">Agent A</text><text class="s" x="58" y="202">checkout-builder · file X</text>
+  <rect x="40" y="256" width="260" height="76" rx="12" fill="#eef8f9" stroke="#087f8c" stroke-width="1.5"/>
+  <text class="h" x="58" y="286">Agent B</text><text class="s" x="58" y="310">audit-bot · file X</text>
+  <rect x="40" y="364" width="260" height="76" rx="12" fill="#fdf5ea" stroke="#b56800" stroke-width="1.5"/>
+  <text class="h" x="58" y="394">Agent C</text><text class="s" x="58" y="418">brand-builder · file Y</text>
+  <text class="tiny" x="40" y="476">Agents use forFile() or openHighway()</text>
+  <text class="tiny" x="40" y="494">from bridge/fig.mjs. Scripts that only</text>
+  <text class="tiny" x="40" y="512">need one call can still use the lobby</text>
+  <text class="tiny" x="40" y="530">directly (the file's own channel).</text>
+
+  <!-- Daemon -->
+  <rect x="370" y="104" width="540" height="676" rx="16" fill="#f4f6fb" stroke="#d1d8e5"/>
+  <text class="panelTitle" x="392" y="132">DAEMON · ONE NODE PROCESS</text>
+  <rect x="392" y="148" width="496" height="82" rx="12" fill="#e6efff" stroke="#0066cc" stroke-width="1.5"/>
+  <text class="h" x="412" y="178">Lobby · 127.0.0.1:3456</text>
+  <text class="s" x="412" y="201">Checks the token and exact build, opens and closes highways,</text>
+  <text class="s" x="412" y="219">answers status, coordinate and lifecycle requests.</text>
+
+  <rect x="392" y="262" width="496" height="66" rx="10" fill="#ffffff" stroke="#d1d8e5"/><rect x="392" y="262" width="6" height="66" rx="3" fill="#8b4ad2"/>
+  <text class="h" x="414" y="290">Highway A · port 51234</text><text class="s" x="414" y="312">own queue · outbox for results · 60 s resume on either end</text>
+  <rect x="392" y="340" width="496" height="66" rx="10" fill="#ffffff" stroke="#d1d8e5"/><rect x="392" y="340" width="6" height="66" rx="3" fill="#087f8c"/>
+  <text class="h" x="414" y="368">Highway B · port 51240</text><text class="s" x="414" y="390">own queue · outbox for results · 60 s resume on either end</text>
+  <rect x="392" y="418" width="496" height="66" rx="10" fill="#ffffff" stroke="#d1d8e5"/><rect x="392" y="418" width="6" height="66" rx="3" fill="#b56800"/>
+  <text class="h" x="414" y="446">Highway C · port 51251</text><text class="s" x="414" y="468">own queue · outbox for results · 60 s resume on either end</text>
+
+  <rect x="392" y="516" width="496" height="104" rx="12" fill="#ffffff" stroke="#3f64a6" stroke-width="1.5"/>
+  <text class="h" x="412" y="546">Coordinator</text>
+  <text class="s" x="412" y="570">One channel per highway and one per file. Zone admission,</text>
+  <text class="s" x="412" y="588">automatic placement, holds scoped to their channel, durable</text>
+  <text class="s" x="412" y="606">journal, receipts and console telemetry.</text>
+  <path d="M640 484 V516" stroke="#3f64a6" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+  <rect x="392" y="652" width="496" height="104" rx="12" fill="#ffffff" stroke="#d1d8e5"/>
+  <text class="h" x="412" y="682">File channels · paired control sockets</text>
+  <text class="s" x="412" y="706">One per open plugin window: pairing, session epochs,</text>
+  <text class="s" x="412" y="724">highway announcements and live telemetry. Work sent</text>
+  <text class="s" x="412" y="742">without a highway uses this channel's own queue.</text>
+  <path d="M640 620 V652" stroke="#3f64a6" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+  <!-- Figma -->
+  <rect x="970" y="104" width="390" height="676" rx="16" fill="#f7f7f8" stroke="#d1d1d6"/>
+  <text class="panelTitle" x="992" y="132">FIGMA DESKTOP</text>
+
+  <rect x="990" y="148" width="350" height="370" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <path d="M990 182 V160 a12 12 0 0 1 12 -12 H1328 a12 12 0 0 1 12 12 V182 Z" fill="#eceef2"/>
+  <text class="label" x="1006" y="170">File X · figma-cli-ultimate window</text>
+  <rect x="1004" y="198" width="92" height="28" rx="14" fill="#e6efff" stroke="#0066cc"/><text class="pill" x="1026" y="217" fill="#0066cc">control</text>
+  <rect x="1004" y="281" width="92" height="28" rx="14" fill="#f6f2fd" stroke="#8b4ad2"/><text class="pill" x="1017" y="300" fill="#8b4ad2">highway A</text>
+  <rect x="1004" y="359" width="92" height="28" rx="14" fill="#eef8f9" stroke="#087f8c"/><text class="pill" x="1017" y="378" fill="#087f8c">highway B</text>
+  <path d="M1096 212 H1110 M1096 295 H1110 M1096 373 H1110" stroke="#9aa3b2" stroke-width="1.5"/>
+  <rect x="1110" y="196" width="216" height="222" rx="10" fill="#f4f6fb" stroke="#d1d8e5"/>
+  <text class="h" x="1124" y="222">Plugin thread</text>
+  <text class="tiny" x="1124" y="240">one per file</text>
+  <rect x="1124" y="252" width="188" height="22" rx="5" fill="#ffffff" stroke="#d1d8e5"/><text class="tiny" x="1134" y="268">queue · file channel</text>
+  <rect x="1124" y="282" width="188" height="22" rx="5" fill="#ffffff" stroke="#8b4ad2"/><text class="tiny" x="1134" y="298">queue · highway A</text>
+  <rect x="1124" y="312" width="188" height="22" rx="5" fill="#ffffff" stroke="#087f8c"/><text class="tiny" x="1134" y="328">queue · highway B</text>
+  <text class="s" x="1124" y="360">Jobs take turns every</text>
+  <text class="s" x="1124" y="378">100 nodes and between</text>
+  <text class="s" x="1124" y="396">batch items.</text>
+  <rect x="1110" y="432" width="216" height="70" rx="10" fill="#ffffff" stroke="#d1d8e5"/>
+  <text class="h" x="1124" y="458">Document</text>
+  <text class="s" x="1124" y="480">pages load on demand,</text>
+  <text class="s" x="1124" y="496">zones checked in place</text>
+  <path d="M1218 418 V432" stroke="#9aa3b2" stroke-width="1.5"/>
+
+  <rect x="990" y="540" width="350" height="222" rx="12" fill="#ffffff" stroke="#9aa3b2"/>
+  <path d="M990 574 V552 a12 12 0 0 1 12 -12 H1328 a12 12 0 0 1 12 12 V574 Z" fill="#eceef2"/>
+  <text class="label" x="1006" y="562">File Y · figma-cli-ultimate window</text>
+  <rect x="1004" y="590" width="92" height="28" rx="14" fill="#e6efff" stroke="#0066cc"/><text class="pill" x="1026" y="609" fill="#0066cc">control</text>
+  <rect x="1004" y="636" width="92" height="28" rx="14" fill="#fdf5ea" stroke="#b56800"/><text class="pill" x="1017" y="655" fill="#b56800">highway C</text>
+  <path d="M1096 604 H1110 M1096 650 H1110" stroke="#9aa3b2" stroke-width="1.5"/>
+  <rect x="1110" y="588" width="216" height="160" rx="10" fill="#f4f6fb" stroke="#d1d8e5"/>
+  <text class="h" x="1124" y="614">Plugin thread</text>
+  <text class="tiny" x="1124" y="632">its own tab, its own thread</text>
+  <rect x="1124" y="644" width="188" height="22" rx="5" fill="#ffffff" stroke="#d1d8e5"/><text class="tiny" x="1134" y="660">queue · file channel</text>
+  <rect x="1124" y="674" width="188" height="22" rx="5" fill="#ffffff" stroke="#b56800"/><text class="tiny" x="1134" y="690">queue · highway C</text>
+  <text class="s" x="1124" y="724">Runs in parallel with</text>
+  <text class="s" x="1124" y="740">file X.</text>
+
+  <!-- ① open highway (lobby) -->
+  <path d="M300 176 C345 176 345 182 388 182" fill="none" stroke="#0066cc" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M300 284 C340 284 345 198 388 198" fill="none" stroke="#0066cc" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <path d="M300 392 C350 392 352 212 388 212" fill="none" stroke="#0066cc" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrowBlue)"/>
+  <circle cx="330" cy="164" r="11" fill="#0066cc"/><text class="step" x="326" y="168">1</text>
+
+  <!-- ② jobs and results on the agent's own port -->
+  <path d="M300 208 C350 208 345 295 388 295" fill="none" stroke="#8b4ad2" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M300 316 C345 316 345 373 388 373" fill="none" stroke="#087f8c" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M300 424 C345 424 345 451 388 451" fill="none" stroke="#b56800" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <circle cx="352" cy="252" r="11" fill="#8b4ad2"/><text class="step" x="348" y="256">2</text>
+
+  <!-- ③ announcements on the paired control sockets -->
+  <path d="M888 690 C935 690 935 212 1000 212" fill="none" stroke="#0066cc" stroke-width="1.5" stroke-dasharray="6 5" marker-end="url(#arrowBlue)"/>
+  <path d="M888 716 C945 716 945 604 1000 604" fill="none" stroke="#0066cc" stroke-width="1.5" stroke-dasharray="6 5" marker-end="url(#arrowBlue)"/>
+  <circle cx="937" cy="640" r="11" fill="#0066cc"/><text class="step" x="933" y="644">3</text>
+
+  <!-- ④ the plugin end of each highway -->
+  <path d="M888 295 H1000" fill="none" stroke="#8b4ad2" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M888 373 H1000" fill="none" stroke="#087f8c" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M888 451 C950 451 950 650 1000 650" fill="none" stroke="#b56800" stroke-width="2.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <circle cx="958" cy="334" r="11" fill="#5b6475"/><text class="step" x="954" y="338">4</text>
+
+  <!-- Steps -->
+  <rect x="40" y="800" width="1320" height="136" rx="12" fill="#f4f6fb"/>
+  <circle cx="64" cy="826" r="11" fill="#0066cc"/><text class="step" x="60" y="830">1</text>
+  <text class="s" x="84" y="830">The agent asks the lobby for a highway into one file (daemon token, exact build) and receives a private port and a ticket.</text>
+  <circle cx="64" cy="856" r="11" fill="#8b4ad2"/><text class="step" x="60" y="860">2</text>
+  <text class="s" x="84" y="860">From then on it sends jobs and receives progress and results on that port only. A drop keeps the results; the client reconnects.</text>
+  <circle cx="64" cy="886" r="11" fill="#0066cc"/><text class="step" x="60" y="890">3</text>
+  <text class="s" x="84" y="890">The lobby announces the highway to that file's plugin window over its paired control socket, which also carries telemetry.</text>
+  <circle cx="64" cy="916" r="11" fill="#5b6475"/><text class="step" x="60" y="920">4</text>
+  <text class="s" x="84" y="920">The window opens its own socket to the same port with the same ticket. Different files run in parallel; inside a file, channels take turns.</text>
+</svg>

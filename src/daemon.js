@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { wrapCodeIfNeeded } from './lib/eval-wrap.js';
 import { BridgeCoordinator } from './lib/bridge-coordinator.js';
+import { Highways } from './lib/bridge-highways.js';
 import { join } from 'node:path';
 import { LIMITS, bridgeError, deadline } from './lib/bridge-protocol.js';
 import { BodyBudget, ResponseSlots, readJsonBody, withDeadline } from './lib/bridge-http.js';
@@ -29,6 +30,9 @@ const bridge = new BridgeCoordinator({ expectedBuild: BUILD.pluginBuild, activit
   journalPath: join(STATE_DIR, 'coordinator-journal.json'),
   pairingPath: join(STATE_DIR, 'paired-computers.json'), approvePairing: windowsPairingApproval(),
   resources: () => ({ sampledAt: Date.now(), source: 'Node process', memory: process.memoryUsage(), eventLoopDelayMs: { mean: Number.isFinite(loopDelay.mean) ? loopDelay.mean / 1e6 : null, p99: loopDelay.percentile(99) / 1e6 } }),
+  log: (event, data) => console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })) });
+// The main port is the lobby: agents ask it for a private highway port per file.
+const highways = new Highways(bridge, { expectedBuild: BUILD.pluginBuild, activity: resetIdleTimer,
   log: (event, data) => console.log(JSON.stringify({ time: new Date().toISOString(), event, ...data })) });
 const loopDelay = monitorEventLoopDelay({ resolution: 20 }); loopDelay.enable();
 const ingress = new BodyBudget();
@@ -151,7 +155,7 @@ async function handleRequest(req, res) {
     const { value: payload } = await readJsonBody(req, { budget: ingress });
     if (res.destroyed) return;
     // Structured clients must identify their checkout AND exact source build.
-    if (['cmd', 'cmd-batch', 'lifecycle', 'coordinate'].includes(payload.action) || req.url === '/shutdown') {
+    if (['cmd', 'cmd-batch', 'lifecycle', 'coordinate', 'highway'].includes(payload.action) || req.url === '/shutdown') {
       if (payload.expectedRoot !== BUILD.root || payload.expectedDaemonBuild !== BUILD.daemonBuild || payload.protocol !== BUILD.protocol) {
         throw bridgeError('build-mismatch', 'Daemon belongs to another checkout or build. Use the project launcher diagnostics/restart.', { outcome: 'not-started' });
       }
@@ -162,13 +166,19 @@ async function handleRequest(req, res) {
       respond(res, 200, { result: 'stopping' }); setImmediate(shutdown); return;
     }
     if (req.url === '/reconnect') {
-      if (MODE === 'plugin' || bridge.connected()) throw bridgeError('unsupported', 'Rerun the Insula plugin to reconnect', { outcome: 'not-started' });
+      if (MODE === 'plugin' || bridge.connected()) throw bridgeError('unsupported', 'Rerun the figma-cli-ultimate plugin to reconnect', { outcome: 'not-started' });
       if (cdpBusy || cdpUncertain) throw bridgeError('worker-busy', 'CDP work has not settled', { outcome: 'not-started' });
       cdpClient?.close(); cdpClient = null; await getCdpClient();
       return respond(res, 200, { status: 'reconnected', mode: 'yolo' });
     }
     let result;
-    if (payload.action === 'coordinate') {
+    if (payload.action === 'highway') {
+      const op = payload.cmd?.op;
+      if (op === 'open') result = await highways.open(payload.cmd);
+      else if (op === 'close') result = { closed: await highways.close(String(payload.cmd.highwayId || ''), 'Closed through the lobby') };
+      else if (op === 'list') result = bridge.snapshot(true).highways;
+      else throw bridgeError('invalid-request', 'Unknown highway operation', { outcome: 'not-started' });
+    } else if (payload.action === 'coordinate') {
       if (payload.cmd?.op === 'pair') result = bridge.pair();
       else if (payload.cmd?.op === 'create-lane') result = bridge.createLane(payload.cmd, payload.coordination);
       else if (payload.cmd?.op === 'remove-lane') result = bridge.removeLane(payload.cmd.laneId, payload.coordination);
@@ -182,7 +192,8 @@ async function handleRequest(req, res) {
       const worker = bridge.select(payload.coordination);
       if (bridge.pending.size || bridge.protected(worker.fileKey)) throw bridgeError('worker-busy', 'Lifecycle requires idle work and no protected zones', { outcome: 'not-started' });
       bridge.lifecycleBusy = true;
-      let guard;
+      let guard, lifecycleError = null;
+      const lifecycleStarted = Date.now();
       try {
         if (payload.cmd?.op === 'reload') {
           if (bridge.quarantined(worker.fileKey)) throw bridgeError('worker-uncertain', 'File requires reconciliation', { outcome: 'not-started' });
@@ -192,6 +203,7 @@ async function handleRequest(req, res) {
         result = await documentLifecycle(worker.bridge, payload.cmd, { signal: controller.signal, port: Number(process.env.FIGMA_CDP_PORT || 9222) });
         if (guard) { bridge.journal.fileHolds.delete(guard.fileKey); bridge.journal.save(); }
       } catch (error) {
+        lifecycleError = error;
         if (guard) {
           if (error.outcome === 'not-started') bridge.journal.fileHolds.delete(guard.fileKey);
           else { guard.state = 'held'; bridge.journal.fileHolds.set(guard.fileKey, guard); }
@@ -199,13 +211,20 @@ async function handleRequest(req, res) {
         }
         throw error;
       }
-      finally { bridge.lifecycleBusy = false; }
+      finally {
+        bridge.lifecycleBusy = false;
+        // Document inspection and reloads run outside the plugin queue; still leave a receipt.
+        bridge.record({ id: 'lifecycle-' + lifecycleStarted, workerId: worker.workerId, laneId: '$control', pageId: null,
+          op: 'lifecycle:' + String(payload.cmd?.op || 'unknown').slice(0, 32), category: 'control',
+          outcome: lifecycleError ? lifecycleError.outcome || 'failed' : 'succeeded', kind: lifecycleError?.kind || null,
+          completedAt: Date.now(), queueMs: 0, executionMs: Date.now() - lifecycleStarted });
+      }
     } else if (['cmd', 'cmd-batch'].includes(payload.action)) {
       result = await bridge.dispatch(payload.action, payload.action === 'cmd' ? { cmd: payload.cmd } : { cmds: payload.cmds },
         { timeoutMs: payload.timeoutMs, queueTimeoutMs: payload.queueTimeoutMs, signal: controller.signal, coordination: payload.coordination });
     } else {
       if (!['eval', 'render', 'render-batch'].includes(payload.action)) throw bridgeError('invalid-request', 'Unknown action', { outcome: 'not-started' });
-      if (MODE === 'plugin' || bridge.connected()) throw bridgeError('unsupported', 'This plugin uses structured commands. Use the Insula launcher send command.', { outcome: 'not-started' });
+      if (MODE === 'plugin' || bridge.connected()) throw bridgeError('unsupported', 'This plugin uses structured commands. Use the figma-cli-ultimate launcher send command.', { outcome: 'not-started' });
       if (cdpBusy || cdpUncertain) throw bridgeError('worker-busy', 'CDP is busy or its previous outcome is uncertain', { outcome: 'not-started' });
       cdpBusy = true;
       try {
@@ -249,7 +268,7 @@ httpServer.listen(PORT, '127.0.0.1', () => {
 let stopping = false;
 function shutdown() {
   if (stopping) return; stopping = true;
-  clearTimeout(idleTimer); loopDelay.disable(); bridge.close(); cdpClient?.close();
+  clearTimeout(idleTimer); loopDelay.disable(); highways.closeAll(); bridge.close(); cdpClient?.close();
   try { if (readFileSync(PID_FILE, 'utf8').trim() === String(process.pid)) unlinkSync(PID_FILE); } catch {}
   wss.close(); httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

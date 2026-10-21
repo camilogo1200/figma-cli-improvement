@@ -1,5 +1,5 @@
 /**
- * insula-figma-cli plugin (Insula) — structured-command edition of the FigCli bridge
+ * figma-cli-ultimate plugin — structured-command edition of the FigCli bridge
  *
  * Figma 126+ blocks eval() inside the plugin sandbox (it throws "Not available"),
  * which killed the original transport: the CLI used to ship JS source strings and
@@ -10,9 +10,11 @@
  * instead of a bare "Not available".
  */
 
-// One window, resized only by the operator. Storage failure must not stop work.
-var UI_MODES = { compact: [360, 300], standard: [360, 600], console: [1060, 904] };
-var uiMode = 'standard';
+// The window always opens as the stealth banner in the viewport's bottom-left
+// corner; presets and edge drags resize it. Storage failure must not stop work.
+var UI_MODES = { stealth: [300, 40], compact: [360, 300], standard: [360, 600], console: [1060, 904] };
+var UI_MIN = [300, 200], UI_MAX = [2400, 1800];
+var uiMode = 'stealth', uiSize = UI_MODES.stealth;
 var UI_THEMES = ['ios', 'signal'];
 var uiTheme = 'ios';
 var uiStorageWrite = Promise.resolve();
@@ -23,23 +25,46 @@ async function openConsole() {
     if (typeof savedPairing === 'string' && /^[a-f0-9]{64}$/.test(savedPairing)) rememberedCredential = savedPairing;
   } catch (e) {}
   try {
-    var saved = await figma.clientStorage.getAsync('ui-mode');
-    if (Object.prototype.hasOwnProperty.call(UI_MODES, saved)) uiMode = saved;
-  } catch (e) {}
-  try {
     var savedTheme = await figma.clientStorage.getAsync('ui-theme');
     if (savedTheme === 'ios-color' || savedTheme === 'ios-uber') savedTheme = 'ios';
     if (savedTheme === 'graphite') savedTheme = 'signal';
     if (UI_THEMES.indexOf(savedTheme) !== -1) uiTheme = savedTheme;
   } catch (e) {}
-  var size = UI_MODES[uiMode];
-  figma.showUI(__html__, { width: size[0], height: size[1], themeColors: true });
+  var size = UI_MODES[uiMode], options = { width: size[0], height: size[1], themeColors: true }, corner = bottomLeft(size);
+  if (corner) options.position = corner;
+  // Paint the banner from the first frame instead of flashing the console layout.
+  figma.showUI(String(__html__).replace('<body data-mode="standard"', '<body data-mode="' + uiMode + '"'), options);
+}
+// Canvas-space position near the viewport's bottom-left corner. Figma keeps a
+// window inside the viewport, so an approximate title-bar height is enough.
+function bottomLeft(size) {
+  try {
+    var b = figma.viewport.bounds, z = figma.viewport.zoom;
+    if (!b || !(z > 0) || ![b.x, b.y, b.height].every(isFinite)) return null;
+    return { x: b.x + 12 / z, y: b.y + b.height - (size[1] + 52) / z };
+  } catch (e) { return null; }
+}
+function lowerHalf() {
+  try {
+    var p = figma.ui.getPosition().canvasSpace, b = figma.viewport.bounds;
+    return p.y > b.y + b.height / 2;
+  } catch (e) { return false; }
+}
+// dx/dy move the window's top-left corner in screen pixels (left/top edge drags,
+// or keeping the bottom edge fixed). Older Figma builds without reposition only resize.
+function resizeWindow(width, height, dx, dy) {
+  figma.ui.resize(width, height); uiSize = [width, height];
+  if (!(dx || dy) || typeof figma.ui.reposition !== 'function' || typeof figma.ui.getPosition !== 'function') return;
+  try {
+    var p = figma.ui.getPosition().canvasSpace, z = figma.viewport.zoom || 1;
+    figma.ui.reposition(p.x + dx / z, p.y + dy / z);
+  } catch (e) {}
 }
 
 var VERSION = '2.2.5-insula-structured';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = '690a57fb3facb63dea64173f'; // stamped by bridge/launcher.mjs build
+var BUILD = '91b519c106e299b37761d2e0'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -587,11 +612,17 @@ var OPS = {
     if (!page || page.type !== 'PAGE') throw failure('wrong-page', 'Automatic layout requires a page, not a nested frame', 'not-started');
     if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
     requireFileKey(cmd.expectedFileKey);
+    noteTarget(page, 'read');
     var children = page.children, bounds = [], budget = { nodes: 0 };
     if (children.length > LIMITS.specNodes) throw failure('spatial-budget', 'Too many page roots to plan safely', 'not-started');
-    // Run in the ordinary queue, so this snapshot never sees an in-progress
-    // creation. No page switch, selection change or scene mutation is needed.
-    for (var i = 0; i < children.length; i++) bounds.push(sceneBounds(children[i], budget));
+    // Another highway's zone job may be mid-creation: its hidden scaffolding is
+    // skipped here because its whole zone is already reserved with the coordinator.
+    // No page switch, selection change or scene mutation is needed.
+    var others = activeJobs.filter(function (j) { return j !== current && j.lease && j.ownedIds; });
+    for (var i = 0; i < children.length; i++) {
+      if (others.some(function (j) { return j.ownedIds[children[i].id]; })) continue;
+      bounds.push(sceneBounds(children[i], budget));
+    }
     return { fileKey: figma.fileKey, pageId: page.id, page: page.name, bounds: bounds };
   },
   inspectReservation: async function (cmd) {
@@ -699,11 +730,7 @@ var OPS = {
       validateZoneScene(false);
       saveZoneReceipt('running');
     }
-    var targetPage = containingPage(parent);
-    if (current) {
-      current.target = targetPage ? { pageId: targetPage.id, page: targetPage.name, parentId: parent.id } : null;
-      status();
-    }
+    noteTarget(parent, 'write');
     var subs = [];
     var made = [];
 
@@ -756,6 +783,7 @@ var OPS = {
   update: async function (cmd) {
     var node = await checked(figma.getNodeByIdAsync(cmd.id));
     if (!node) throw new Error('Node not found: ' + cmd.id);
+    noteTarget(node, 'write');
     var s = cmd.spec || {};
 
     if (s.name) node.name = s.name;
@@ -780,6 +808,7 @@ var OPS = {
 
   find: async function (cmd) {
     var q = String(cmd.name || '').toLowerCase();
+    noteTarget(figma.currentPage, 'read');
     var matches = figma.currentPage.findAll(function (n) {
       return !q || n.name.toLowerCase().indexOf(q) !== -1;
     });
@@ -795,6 +824,7 @@ var OPS = {
     if (!root) throw new Error('Node not found: ' + cmd.id);
     // dynamic-page: a page that is not current may not be loaded yet.
     if (root.type === 'PAGE' && typeof root.loadAsync === 'function') await root.loadAsync();
+    noteTarget(root, 'read');
     var kids = root.children || [];
     var prefix = cmd.prefix == null ? null : String(cmd.prefix);
     var out = [];
@@ -809,6 +839,7 @@ var OPS = {
     var root = cmd.id ? await checked(figma.getNodeByIdAsync(cmd.id)) : figma.currentPage;
     if (!root) throw new Error('Node not found: ' + cmd.id);
     var maxDepth = cmd.depth == null ? 3 : cmd.depth;
+    noteTarget(root, 'read');
 
     function walk(n, d) {
       var o = n.type === 'PAGE' ? { id: n.id, name: n.name, type: n.type } : summarize(n);
@@ -826,7 +857,7 @@ var OPS = {
     for (var i = 0; i < ids.length; i++) {
       var n = await checked(figma.getNodeByIdAsync(ids[i]));
       checkCancelled();
-      if (n) { removed.push(ids[i]); n.remove(); }
+      if (n) { noteTarget(n, 'write', removed.length > 0); removed.push(ids[i]); n.remove(); }
       await tick();
     }
     return { removed: removed };
@@ -857,6 +888,7 @@ var OPS = {
     var action = cmd.action || 'list';
     function brief(p) { return { id: p.id, name: p.name, current: p.id === figma.currentPage.id }; }
     if (action === 'list') return figma.root.children.map(brief);
+    if (action === 'select') return selectPage(cmd);
     if (action === 'create') {
       if (!cmd.name) throw new Error('page create requires name');
       var created = figma.createPage();
@@ -873,7 +905,6 @@ var OPS = {
       if (cmd.bg != null) pg.backgrounds = toPaints(cmd.bg);
       return brief(pg);
     }
-    if (action === 'select') { await figma.setCurrentPageAsync(pg); return brief(pg); }
     if (action === 'rename') {
       if (!cmd.name) throw new Error('page rename requires name');
       pg.name = cmd.name;
@@ -891,6 +922,7 @@ var OPS = {
   audit: async function (cmd) {
     var root = await checked(figma.getNodeByIdAsync(cmd.id));
     if (!root) throw new Error('Node not found: ' + cmd.id);
+    noteTarget(root, 'read');
 
     function firstSolid(n) {
       if (!('fills' in n)) return null;
@@ -1000,6 +1032,7 @@ var OPS = {
   reactions: async function (cmd) {
     var node = await checked(figma.getNodeByIdAsync(cmd.id));
     if (!node) throw new Error('Node not found: ' + cmd.id);
+    noteTarget(node, 'write');
     var rs = (cmd.reactions || []).map(function (r) {
       var trigger = r.trigger || { type: 'ON_CLICK' };
       if (trigger.type === 'ON_KEY_DOWN' && !trigger.device) trigger.device = 'KEYBOARD';
@@ -1037,6 +1070,7 @@ var OPS = {
     var target = await checked(figma.getNodeByIdAsync(cmd.id));
     if (!page || page.type !== 'PAGE' || !target || containingPage(target) !== page) throw failure('wrong-page', 'Flow start must belong to the specified page', 'not-started');
     if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
+    noteTarget(target, 'write');
     var pts = cmd.reset ? [] : page.flowStartingPoints.filter(function (p) { return p.nodeId !== cmd.id; });
     pts.push({ nodeId: cmd.id, name: cmd.name || 'Start' });
     page.flowStartingPoints = pts;
@@ -1059,6 +1093,7 @@ var OPS = {
   exportImage: async function (cmd) {
     var node = cmd.id ? await checked(figma.getNodeByIdAsync(cmd.id)) : figma.currentPage.selection[0];
     if (!node) throw new Error('Nothing to export');
+    noteTarget(node, 'snapshot');
     checkCancelled();
     var scale = cmd.scale == null ? 1 : cmd.scale;
     if (!isFinite(scale) || scale <= 0 || node.width * node.height * scale * scale > LIMITS.exportPixels) {
@@ -1082,12 +1117,129 @@ var OPS = {
 };
 
 
+// Page references are available without loading their scene. Preload explicitly
+// so native switching does not also have to load a heavy page. Neither phase
+// yields through the UI watchdog, and a cancelled native call must settle before
+// the file queue advances. Do not race it against a timer or retry it blindly.
+async function selectPage(cmd) {
+  var started = Date.now(), phase = 'lookup', previous = figma.currentPage.id, switching = false, page;
+  function details(cause) {
+    var d = { phase: phase, requestedPageId: typeof cmd.id === 'string' ? cmd.id.slice(0, 128) : null, previousPageId: previous,
+      currentPageId: figma.currentPage.id, elapsedMs: Date.now() - started, artworkChanged: false };
+    if (arguments.length) d.cause = String(cause && cause.message || cause).slice(0, 512);
+    return d;
+  }
+  function result(navigation) { return { id: page.id, name: page.name, current: page.id === figma.currentPage.id, navigation: navigation }; }
+  try {
+    if (typeof cmd.id !== 'string' || !cmd.id || cmd.id.length > 128) throw new Error('page select requires a page id');
+    page = figma.root.children.find(function (p) { return p.id === cmd.id; });
+    if (!page || page.type !== 'PAGE') throw new Error('Page not found: ' + cmd.id);
+    noteTarget(page, 'navigation');
+    checkCancelled();
+    if (page.id === figma.currentPage.id) return result(details());
+    phase = 'load';
+    if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
+    checkCancelled();
+    phase = 'switch'; switching = true;
+    await checked(figma.setCurrentPageAsync(page));
+    if (figma.currentPage.id !== page.id) throw new Error('Figma did not select the requested page');
+    return result(details());
+  } catch (cause) {
+    var navigation = details(cause);
+    // The native promise can reject after the visible page has changed. Read
+    // back the actual page to reconcile navigation; never claim a cancelled job succeeded.
+    if (switching && !(current && current.cancelReason) && figma.currentPage.id === page.id) {
+      navigation.reconciled = true; return result(navigation);
+    }
+    // Native errors may be non-extensible; wrap rather than annotating them.
+    var error = failure(cause && cause.kind || 'page-navigation', 'Page navigation (' + phase + '): ' + navigation.cause,
+      switching ? 'failed' : 'not-started');
+    error.details = { navigation: navigation }; throw error;
+  }
+}
 async function checked(promise) { var value = await promise; checkCancelled(); if (current && current.zonePage) validateZoneScene(false); return value; }
 function failure(kind, message, outcome) {
   var e = new Error(message); e.kind = kind; e.outcome = outcome; return e;
 }
 function merge(a, b) { for (var k in b) a[k] = b[k]; return a; }
 function containingPage(n) { while (n && n.type !== 'PAGE') n = n.parent; return n; }
+function boxOf(node) {
+  if (!node || node.type === 'PAGE') return null;
+  try {
+    var r = node.absoluteBoundingBox;
+    return r && [r.x, r.y, r.width, r.height].every(isFinite) ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+  } catch (e) { return null; }
+}
+// Where the current job reads or writes, for the console map: its page and the
+// page-space box of the node it touches (none = the whole page). widen grows the
+// box over several nodes on the same page.
+function noteTarget(node, kind, widen) {
+  if (!current || !node) return;
+  var page = containingPage(node); if (!page) return;
+  var box = boxOf(node), old = current.target;
+  if (widen && old && old.pageId === page.id && old.kind === kind) {
+    if (!box || !old.bounds) box = null;
+    else {
+      var x = Math.min(old.bounds.x, box.x), y = Math.min(old.bounds.y, box.y);
+      box = { x: x, y: y, width: Math.max(old.bounds.x + old.bounds.width, box.x + box.width) - x, height: Math.max(old.bounds.y + old.bounds.height, box.y + box.height) - y };
+    }
+  }
+  current.target = { pageId: page.id, page: page.name, parentId: node.id, kind: kind, bounds: box };
+  current.targetPage = page;
+  if (kind === 'write' && current.touched && current.touched.indexOf(page) === -1 && current.touched.length < 8) current.touched.push(page);
+  // A batch of small edits reports its moving target a few times a second, not per node.
+  if (current.targetSentPage !== page.id || Date.now() - (current.targetSentAt || 0) > 250) {
+    current.targetSentPage = page.id; current.targetSentAt = Date.now(); status();
+  }
+}
+// Coarse artwork map for the console: top-level frame bounds bucketed into a
+// small grid, hex-encoded. It never loads a page; an unloaded page has no sketch.
+var SKETCH_COLS = 48, SKETCH_ROWS = 30, SKETCH_ROOTS = 5000, SKETCH_MS = 1000;
+var sketchAt = Object.create(null), dirtyPages = [];
+function pageSketch(page) {
+  var children;
+  try { children = page.children; } catch (e) { return null; }
+  var base = { pageId: page.id, page: page.name, roots: children.length, cols: SKETCH_COLS, rows: SKETCH_ROWS, extent: null, cells: '', measuredAt: Date.now() };
+  if (children.length > SKETCH_ROOTS) { base.cells = null; return base; }
+  var boxes = [], minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (var i = 0; i < children.length; i++) {
+    var b = boxOf(children[i]); if (!b) continue;
+    boxes.push(b); minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+  }
+  if (!boxes.length) return base;
+  var w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY), bits = [];
+  for (var c = 0; c < SKETCH_COLS * SKETCH_ROWS; c++) bits.push(0);
+  boxes.forEach(function (r) {
+    var c0 = Math.floor((r.x - minX) / w * SKETCH_COLS), c1 = Math.ceil((r.x + r.width - minX) / w * SKETCH_COLS) - 1;
+    var r0 = Math.floor((r.y - minY) / h * SKETCH_ROWS), r1 = Math.ceil((r.y + r.height - minY) / h * SKETCH_ROWS) - 1;
+    for (var y = Math.max(0, r0); y <= Math.min(SKETCH_ROWS - 1, r1); y++)
+      for (var x = Math.max(0, c0); x <= Math.min(SKETCH_COLS - 1, Math.max(c0, c1)); x++) bits[y * SKETCH_COLS + x] = 1;
+  });
+  var hex = '';
+  for (var k = 0; k < bits.length; k += 4) hex += (bits[k] * 8 + bits[k + 1] * 4 + bits[k + 2] * 2 + bits[k + 3]).toString(16);
+  base.extent = { x: minX, y: minY, width: w, height: h }; base.cells = hex;
+  return base;
+}
+function sendSketch(page, force) {
+  if (!page || page.removed || page.type !== 'PAGE') return;
+  var now = Date.now();
+  if (!force && sketchAt[page.id] && now - sketchAt[page.id] < SKETCH_MS) return;
+  var sketch = pageSketch(page); if (!sketch) return;
+  sketchAt[page.id] = now;
+  var keys = Object.keys(sketchAt); if (keys.length > 64) delete sketchAt[keys[0]];
+  figma.ui.postMessage(merge({ type: 'page-sketch' }, sketch));
+}
+// Written pages redraw at most once a second while work streams, and once more
+// when the queue drains, so a burst of small writes still ends on a fresh sketch.
+function sketchAfter(written, read) {
+  written.forEach(function (p) { if (dirtyPages.indexOf(p) === -1) dirtyPages.push(p); });
+  if (dirtyPages.length > 8) dirtyPages = dirtyPages.slice(-8);
+  if (!queuedJobs() && activeJobs.length === 0) { var pages = dirtyPages; dirtyPages = []; pages.forEach(function (p) { sendSketch(p, true); }); }
+  else written.forEach(function (p) { sendSketch(p, false); });
+  // A page that was only read is drawn once for context (first look or stale).
+  if (read && written.indexOf(read) === -1) sendSketch(read, false);
+}
 function requireFileKey(expected) {
   if (typeof expected !== 'string' || !/^[A-Za-z0-9]{1,128}$/.test(expected)) throw failure('invalid-request', 'An exact expectedFileKey is required', 'not-started');
   if (typeof figma.fileKey !== 'string' || !figma.fileKey) throw failure('file-key-unavailable', 'This plugin session cannot attest the live file key', 'not-started');
@@ -1105,9 +1257,36 @@ var LIMITS = { messageBytes: 8 * 1024 * 1024, resultBytes: 32 * 1024 * 1024,
   specDepth: 64, exportPixels: 32 * 1024 * 1024 };
 var IMMEDIATE = { ping: true, info: true, cancel: true, verifyFile: true, inspectReservation: true };
 var MUTATING = { create: true, update: true, remove: true, reactions: true, flowStart: true, page: true, image: true, select: true };
+function mutatesArtwork(cmd) { return !!MUTATING[cmd.op] && !(cmd.op === 'page' && cmd.action === 'select'); }
 var YIELD_EVERY = 100;
-var waiting = [], queuedBytes = 0, current = null, pumping = false;
+var waiting = [], queuedBytes = 0, current = null;
+// One FIFO per channel: 'main' is the paired control socket, every other channel
+// is a highway with its own socket. Jobs of different channels take turns on this
+// single thread at their pause points (every 100 nodes and between batch items),
+// so one agent's long batch never makes another agent wait for all of it. Only
+// the job holding the turn runs between awaits; `current` is always that job.
+var channels = { main: { id: 'main', waiting: waiting, running: null } }, activeJobs = [], turnHolder = null, turnQueue = [];
 var yieldSeq = 0, yieldWaiters = Object.create(null);
+function queuedJobs() { var n = 0; for (var id in channels) n += channels[id].waiting.length; return n; }
+function acquireTurn(job) {
+  if (!turnHolder) { turnHolder = job; return Promise.resolve(); }
+  return new Promise(function (resolve) { turnQueue.push({ job: job, resolve: resolve }); });
+}
+function passTurn() {
+  var next = turnQueue.shift();
+  turnHolder = next ? next.job : null;
+  if (next) next.resolve();
+}
+// Called at a pause point: hand the thread to the next waiting job (round robin)
+// and continue when the turn comes back. A lone job never stops here.
+async function shareTurn() {
+  if (!turnQueue.length || !current || turnHolder !== current) return;
+  var me = current, back = new Promise(function (resolve) { turnQueue.push({ job: me, resolve: resolve }); });
+  me.fontCache = fontCache; current = null;
+  passTurn();
+  await back;
+  current = me; fontCache = me.fontCache; me.turns = (me.turns || 0) + 1;
+}
 var coordinatorSession = null, usedLeases = Object.create(null);
 function saveZoneReceipt(state, nodeIds) {
   if (!current || !current.lease || !current.zonePage) return;
@@ -1117,8 +1296,12 @@ function saveZoneReceipt(state, nodeIds) {
 }
 function validZoneRect(r) { return r && ['x', 'y', 'width', 'height'].every(function (k) { return Number.isFinite(r[k]) && Math.abs(r[k]) <= 1e7; }) && r.width > 0 && r.height > 0; }
 function zoneIntersects(a, b, g) { return a.x < b.x + b.width + g && a.x + a.width + g > b.x && a.y < b.y + b.height + g && a.y + a.height + g > b.y; }
-function validateLease(lease) {
-  if (!coordinatorSession || lease.sessionEpoch !== coordinatorSession.sessionEpoch || lease.coordinatorEpoch !== coordinatorSession.coordinatorEpoch ||
+// A lease is fenced to the session of the channel that carries it: the control
+// socket's worker session, or the highway's own session (told by the daemon).
+var highwaySessions = Object.create(null);
+function validateLease(lease, channel) {
+  var expected = channel && channel !== 'main' ? highwaySessions[channel] : coordinatorSession && coordinatorSession.sessionEpoch;
+  if (!coordinatorSession || !expected || lease.sessionEpoch !== expected || lease.coordinatorEpoch !== coordinatorSession.coordinatorEpoch ||
       !Number.isSafeInteger(lease.token) || lease.token < 1 || typeof lease.leaseId !== 'string' || !validZoneRect(lease.rect) || !Number.isFinite(lease.gutter) || lease.gutter < 0) {
     throw failure('stale-lease', 'Reservation does not belong to this coordinator session', 'not-started');
   }
@@ -1154,15 +1337,19 @@ function validateZoneScene(final) {
   finally { var elapsed = Date.now() - started; metrics.spatialMs += elapsed; metrics.spatialMaxMs = Math.max(metrics.spatialMaxMs, elapsed); }
 }
 function validateZoneSceneNow(final) {
-  validateLease(current.lease);
+  validateLease(current.lease, current.channel);
   var page = current.zonePage, lease = current.lease, roots = [], foreignBudget = { nodes: 0 };
   if (page.removed || page.id !== lease.pageId) throw failure('external-edit', 'Target page disappeared', 'partial');
   var owned = current.ownedIds;
   var children = page.children;
   if (children.length > LIMITS.specNodes) throw failure('spatial-budget', 'Too many page roots to attest safely', 'not-started');
+  // Another zone job sharing the thread parks its hidden scaffolding on the page;
+  // its zone is disjoint from ours (admission guarantees it) and it validates itself.
+  var others = activeJobs.filter(function (j) { return j !== current && j.lease && j.ownedIds; });
   for (var i = 0; i < children.length; i++) {
     var n = children[i];
     if (owned[n.id]) { roots.push(n); continue; }
+    if (others.some(function (j) { return j.ownedIds[n.id]; })) continue;
     // Still read fresh geometry at EVERY checkpoint; no cache survives an await.
     if (zoneIntersects(lease.rect, sceneBounds(n, foreignBudget), lease.gutter)) throw failure('zone-conflict', 'Existing artwork intersects the reserved zone: ' + n.id, 'partial');
   }
@@ -1190,30 +1377,37 @@ function byteLength(text) {
   return n;
 }
 function isImmediate(cmd) { return !!(cmd && Object.prototype.hasOwnProperty.call(IMMEDIATE, cmd.op)); }
+function jobSummary(job) {
+  return job && { id: job.id, op: job.op, ms: Date.now() - job.since, done: job.done, total: job.total, cancelled: job.cancelReason || null,
+    target: job.target || null, ownedNodes: job.owned.length, channel: job.channel, turns: job.turns || 0 };
+}
 function queueStatus() {
-  return { busy: !!current, queued: waiting.length, queuedBytes: queuedBytes,
-    queue: waiting.map(function (job) {
-      return { id: job.msg.id, op: job.msg.type === 'cmd' ? job.msg.cmd.op : 'batch',
+  var queue = [], shown = current || activeJobs[0] || null;
+  Object.keys(channels).forEach(function (id) {
+    channels[id].waiting.forEach(function (job) {
+      queue.push({ id: job.msg.id, op: job.msg.type === 'cmd' ? job.msg.cmd.op : 'batch', channel: id,
         nodes: job.work, bytes: job.bytes, waitMs: Date.now() - job.enqueuedAt,
-        parentId: job.msg.type === 'cmd' && typeof job.msg.cmd.parent === 'string' ? job.msg.cmd.parent.slice(0, 128) : null };
-    }),
+        parentId: job.msg.type === 'cmd' && typeof job.msg.cmd.parent === 'string' ? job.msg.cmd.parent.slice(0, 128) : null });
+    });
+  });
+  return { busy: activeJobs.length > 0, queued: queue.length, queuedBytes: queuedBytes, queue: queue,
     historyReceiptEntries: historyCandidate ? 1 : 0,
     yieldWaiters: Object.keys(yieldWaiters).length, fontCacheEntries: Object.keys(fontCache).length, limits: LIMITS,
-    current: current && { id: current.id, op: current.op, ms: Date.now() - current.since,
-      done: current.done, total: current.total, cancelled: current.cancelReason || null,
-      target: current.target || null, ownedNodes: current.owned.length } };
+    current: jobSummary(shown), running: activeJobs.map(jobSummary), turnWaiting: turnQueue.length };
 }
 function status() { figma.ui.postMessage(merge(merge({ type: 'status' }, identity()), queueStatus())); }
+// Every reply carries its highway so the UI returns it on the socket it came from.
 function reply(msg, fields) {
   var answer = merge({ type: msg.type === 'cmd-batch' ? 'batch-result' : 'result', id: msg.id, session: msg.session }, fields);
   if (byteLength(JSON.stringify(answer)) > LIMITS.resultBytes) {
     answer = { type: answer.type, id: msg.id, session: msg.session, error: 'Result exceeds the response budget', kind: 'result-too-large', outcome: 'uncertain' };
   }
+  if (msg.highway) answer.highway = msg.highway;
   figma.ui.postMessage(answer);
 }
 function checkCancelled() {
   if (current && current.cancelReason) throw failure(current.cancelKind || 'cancelled', 'Cancelled (' + current.cancelReason + ')', 'partial');
-  if (current && current.lease) validateLease(current.lease);
+  if (current && current.lease) validateLease(current.lease, current.channel);
 }
 function finishYield(k, error) {
   var w = yieldWaiters[k]; if (!w) return;
@@ -1221,19 +1415,25 @@ function finishYield(k, error) {
   figma.ui.postMessage({ type: 'yield-finished', k: Number(k) });
   if (error) w.reject(error); else w.resolve();
 }
-function cancelCommands(id, reason, kind) {
+// channel limits '*' to one channel (a dropped control socket must not stop highways).
+function cancelCommands(id, reason, kind, channel) {
   id = String(id); var hit = [];
-  if (current && (id === '*' || current.id === id)) {
-    current.cancelReason = reason || 'cancelled'; current.cancelKind = kind || 'cancelled'; hit.push(current.id);
-    Object.keys(yieldWaiters).forEach(function (k) { finishYield(k, failure(current.cancelKind, current.cancelReason, 'partial')); });
-  }
-  for (var i = waiting.length - 1; i >= 0; i--) {
-    var job = waiting[i];
-    if (id !== '*' && job.msg.id !== id) continue;
-    waiting.splice(i, 1); queuedBytes -= job.bytes; hit.push(job.msg.id);
-    reply(job.msg, { error: 'Cancelled before execution', kind: 'cancelled', outcome: 'not-started' });
-    job.msg = null;
-  }
+  activeJobs.forEach(function (job) {
+    if ((channel && job.channel !== channel) || (id !== '*' && job.id !== id)) return;
+    job.cancelReason = reason || 'cancelled'; job.cancelKind = kind || 'cancelled'; hit.push(job.id);
+    Object.keys(yieldWaiters).forEach(function (k) { if (yieldWaiters[k].job === job) finishYield(k, failure(job.cancelKind, job.cancelReason, 'partial')); });
+  });
+  Object.keys(channels).forEach(function (name) {
+    if (channel && name !== channel) return;
+    var list = channels[name].waiting;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var job = list[i];
+      if (id !== '*' && job.msg.id !== id) continue;
+      list.splice(i, 1); queuedBytes -= job.bytes; hit.push(job.msg.id);
+      reply(job.msg, { error: 'Cancelled before execution', kind: 'cancelled', outcome: 'not-started' });
+      job.msg = null;
+    }
+  });
   status(); return hit;
 }
 function validateCommand(cmd) {
@@ -1300,7 +1500,7 @@ async function runCommand(cmd) {
   if (isImmediate(cmd)) return OPS[cmd.op](cmd);
   checkCancelled();
   if (cmd.trackHistory) validateCommand(cmd);
-  if (MUTATING[cmd.op]) historyCandidate = null;
+  if (mutatesArtwork(cmd)) historyCandidate = null;
   current.owned = []; current.ownedIds = Object.create(null); current.target = null; fontCache = Object.create(null);
   current.performance = performanceCounters();
   try {
@@ -1318,22 +1518,26 @@ async function runCommand(cmd) {
       e.outcome = failed.length ? 'uncertain' : 'rolled-back';
       if (!failed.length && current.lease) { try { saveZoneReceipt('rolled-back'); } catch (receiptError) { e.outcome = 'uncertain'; } }
       if (failed.length) e.details = { cleanupFailedIds: failed };
-    } else if (!e.outcome) e.outcome = MUTATING[cmd.op] ? 'partial' : 'failed';
+    } else if (!e.outcome) e.outcome = mutatesArtwork(cmd) ? 'partial' : 'failed';
     throw e;
   } finally { fontCache = Object.create(null); }
 }
 function uiRoundTrip() {
+  var job = current;
   return new Promise(function (resolve, reject) {
-    var k = ++yieldSeq; yieldWaiters[k] = { resolve: resolve, reject: reject };
+    var k = ++yieldSeq; yieldWaiters[k] = { resolve: resolve, reject: reject, job: job };
     figma.ui.postMessage({ type: 'yield', k: k });
   });
 }
 async function pause() {
   checkCancelled(); if (!current) return;
   current.lastYield = current.done;
-  figma.ui.postMessage({ type: 'progress', session: current.session, id: current.id, done: current.done, total: current.total, state: queueStatus() });
+  var progress = { type: 'progress', session: current.session, id: current.id, done: current.done, total: current.total, state: queueStatus() };
+  if (current.channel !== 'main') progress.highway = current.channel;
+  figma.ui.postMessage(progress);
   var started = Date.now(); current.performance.yieldCount++;
   await uiRoundTrip(); current.performance.yieldMs += Date.now() - started; checkCancelled();
+  await shareTurn(); checkCancelled();
   if (current.zonePage) validateZoneScene(false);
 }
 async function tick() {
@@ -1358,63 +1562,96 @@ async function runItems(cmds) {
   }
   return results;
 }
-async function pump() {
-  if (pumping) return; pumping = true;
-  try {
-    while (waiting.length) {
-      var job = waiting.shift(), msg = job.msg; queuedBytes -= job.bytes;
-      // Immediate reads bypass runCommand's per-operation initialization, but
-      // every batch still yields between items (including ping/info first).
-      current = { id: msg.id, session: msg.session, lease: msg.lease || null, visibility: Object.create(null), op: msg.type === 'cmd' ? msg.cmd.op : 'batch', since: Date.now(), done: 0, total: job.work, lastYield: 0, owned: [], performance: performanceCounters() };
-      figma.ui.postMessage({ type: 'busy', session: msg.session, busy: true, id: msg.id, op: current.op, total: job.work, queued: waiting.length, queuedBytes: queuedBytes });
-      status();
-      try {
-        if (msg.type === 'cmd-batch') {
-          var results = await runItems(msg.cmds);
-          reply(msg, { results: results, outcome: results.some(function (r) { return !r.success; }) ? 'partial' : 'succeeded' });
-          results = null;
-        } else reply(msg, { result: await runCommand(msg.cmd) });
-      } catch (e) {
-        reply(msg, { error: e.message || String(e), kind: e.kind || 'plugin', outcome: e.outcome || 'failed', details: e.details });
-      } finally {
-        if (job.mutating) { try { figma.commitUndo(); } catch (e) {} }
-        Object.keys(yieldWaiters).forEach(function (k) { finishYield(k, failure('cancelled', 'Request finished')); });
-        current = null; fontCache = Object.create(null);
-        figma.ui.postMessage({ type: 'busy', session: msg.session, busy: false, id: msg.id, queued: waiting.length, queuedBytes: queuedBytes });
-        job.msg = null; msg = null; status();
-      }
-    }
-  } finally { pumping = false; }
+// Each channel runs one job at a time, in arrival order; channels share the thread.
+function startChannel(name) {
+  var c = channels[name];
+  if (!c || c.running || !c.waiting.length) return;
+  var job = c.waiting.shift(); queuedBytes -= job.bytes; c.running = job;
+  runJob(c, job).catch(function (e) { console.error(e); }).then(function () {
+    c.running = null;
+    if (name !== 'main' && !c.waiting.length) delete channels[name];
+    startChannel(name);
+  });
 }
+async function runJob(c, job) {
+  var msg = job.msg;
+  // Immediate reads bypass runCommand's per-operation initialization, but
+  // every batch still yields between items (including ping/info first).
+  var ctx = { id: msg.id, session: msg.session, channel: c.id, lease: msg.lease || null, visibility: Object.create(null), op: msg.type === 'cmd' ? msg.cmd.op : 'batch',
+    since: Date.now(), done: 0, total: job.work, lastYield: 0, owned: [], ownedIds: Object.create(null), touched: [], performance: performanceCounters() };
+  activeJobs.push(ctx);
+  var tag = function (m) { if (c.id !== 'main') m.highway = c.id; return m; };
+  await acquireTurn(ctx);
+  current = ctx; fontCache = Object.create(null);
+  figma.ui.postMessage(tag({ type: 'busy', session: msg.session, busy: true, id: msg.id, op: ctx.op, total: job.work, queued: c.waiting.length, queuedBytes: queuedBytes }));
+  status();
+  try {
+    if (msg.type === 'cmd-batch') {
+      var results = await runItems(msg.cmds);
+      reply(msg, { results: results, outcome: results.some(function (r) { return !r.success; }) ? 'partial' : 'succeeded' });
+      results = null;
+    } else reply(msg, { result: await runCommand(msg.cmd) });
+  } catch (e) {
+    reply(msg, { error: e.message || String(e), kind: e.kind || 'plugin', outcome: e.outcome || 'failed', details: e.details });
+  } finally {
+    if (job.mutating) { try { figma.commitUndo(); } catch (e) {} }
+    Object.keys(yieldWaiters).forEach(function (k) { if (yieldWaiters[k].job === ctx) finishYield(k, failure('cancelled', 'Request finished')); });
+    var written = job.mutating ? ctx.touched : [], read = ctx.targetPage || null;
+    activeJobs.splice(activeJobs.indexOf(ctx), 1);
+    current = null; fontCache = Object.create(null);
+    figma.ui.postMessage(tag({ type: 'busy', session: msg.session, busy: false, id: msg.id, queued: c.waiting.length, queuedBytes: queuedBytes }));
+    job.msg = null; msg = null; status();
+    // Between jobs, never inside one: a sketch reads only top-level bounds.
+    try { sketchAfter(written, read); } catch (e) {}
+    written = null; read = null;
+    passTurn();
+  }
+}
+function channelName(msg) { return typeof msg.highway === 'string' && /^hw-[\w-]{1,124}$/.test(msg.highway) ? msg.highway : 'main'; }
 function enqueue(msg) {
   try {
+    var name = channelName(msg);
+    if (name !== 'main' && !highwaySessions[name]) throw failure('stale-session', 'This highway is not open in this plugin', 'not-started');
     if (msg.lease) {
-      validateLease(msg.lease);
+      validateLease(msg.lease, name);
       if (msg.type !== 'cmd' || msg.cmd.op !== 'create' || msg.cmd.parent !== msg.lease.pageId || msg.cmd.select !== false || msg.cmd.zoom !== false || usedLeases[msg.lease.leaseId]) throw failure('invalid-lease', 'Invalid or replayed zone command', 'not-started');
       if (Object.keys(usedLeases).length >= 512) throw failure('lease-capacity', 'Restart a settled plugin before accepting additional leases', 'not-started');
       usedLeases[msg.lease.leaseId] = msg.lease.token;
     }
     if (typeof msg.id !== 'string' || !msg.id || msg.id.length > 128) throw failure('invalid-request', 'Request id must be a short string', 'not-started');
-    if ((current && current.id === msg.id) || waiting.some(function (j) { return j.msg.id === msg.id; })) throw failure('invalid-request', 'Duplicate request id', 'not-started');
+    var c = channels[name] || (channels[name] = { id: name, waiting: [], running: null });
+    if (activeJobs.some(function (j) { return j.id === msg.id; }) || Object.keys(channels).some(function (n) { return channels[n].waiting.some(function (j) { return j.msg.id === msg.id; }); })) throw failure('invalid-request', 'Duplicate request id', 'not-started');
     var bytes = byteLength(JSON.stringify(msg));
-    if (bytes > LIMITS.messageBytes || queuedBytes + bytes > LIMITS.queueBytes || waiting.length + (current ? 1 : 0) >= LIMITS.queueJobs) throw failure('queue-full', 'Plugin capacity exceeded', 'not-started');
+    if (bytes > LIMITS.messageBytes || queuedBytes + bytes > LIMITS.queueBytes || c.waiting.length + (c.running ? 1 : 0) >= LIMITS.queueJobs) throw failure('queue-full', 'Plugin capacity exceeded', 'not-started');
     var list = msg.type === 'cmd' ? [msg.cmd] : msg.cmds;
     if (!Array.isArray(list) || !list.length || list.length > LIMITS.batchItems) throw failure('invalid-request', 'Batch must contain 1..128 commands', 'not-started');
     if (msg.type === 'cmd-batch' && list.some(function (c) { return c && (c.trackHistory || ['undo', 'redo', 'reload'].indexOf(c.op) !== -1); })) {
       throw failure('invalid-request', 'History/lifecycle commands must be standalone', 'not-started');
     }
     var work = 0, mutating = false;
-    for (var i = 0; i < list.length; i++) { work += validateCommand(list[i]); mutating = mutating || !!MUTATING[list[i].op]; }
+    for (var i = 0; i < list.length; i++) { work += validateCommand(list[i]); mutating = mutating || mutatesArtwork(list[i]); }
     if (work > LIMITS.specNodes) throw failure('limit-exceeded', 'Batch node budget exceeded', 'not-started');
-    waiting.push({ msg: msg, bytes: bytes, work: work, mutating: mutating, enqueuedAt: Date.now() }); queuedBytes += bytes; status();
+    c.waiting.push({ msg: msg, bytes: bytes, work: work, mutating: mutating, enqueuedAt: Date.now() }); queuedBytes += bytes; status();
     // No payload captured in an unbounded promise chain; cancellation splices the queue.
-    Promise.resolve().then(pump).catch(function (e) { console.error(e); });
+    Promise.resolve().then(function () { startChannel(name); }).catch(function (e) { console.error(e); });
   } catch (e) { reply(msg, { error: e.message, kind: e.kind || 'invalid-request', outcome: 'not-started' }); }
 }
 figma.ui.onmessage = async function (msg) {
   if (!msg || typeof msg !== 'object') return;
-  if (msg.type === 'coordinator-ready') { coordinatorSession = { sessionEpoch: msg.sessionEpoch, coordinatorEpoch: msg.coordinatorEpoch }; return; }
-  if (msg.type === 'identify') { figma.ui.postMessage(merge({ type: 'identity', deviceCredential: rememberedCredential, uiMode: uiMode, uiTheme: uiTheme, busy: !!current || !!waiting.length }, identity())); status(); return; }
+  if (msg.type === 'coordinator-ready') {
+    coordinatorSession = { sessionEpoch: msg.sessionEpoch, coordinatorEpoch: msg.coordinatorEpoch };
+    if (!current) { try { sendSketch(figma.currentPage, true); } catch (e) {} }
+    return;
+  }
+  // The control socket only needs its own channel settled; highways keep working.
+  if (msg.type === 'identify') { figma.ui.postMessage(merge({ type: 'identity', deviceCredential: rememberedCredential, uiMode: uiMode, uiTheme: uiTheme, busy: !!channels.main.running || !!waiting.length }, identity())); status(); return; }
+  if (msg.type === 'highway-session') {
+    if (typeof msg.highwayId !== 'string' || !/^hw-[\w-]{1,124}$/.test(msg.highwayId) || typeof msg.sessionEpoch !== 'string' || msg.sessionEpoch.length > 128) return;
+    highwaySessions[msg.highwayId] = msg.sessionEpoch;
+    var known = Object.keys(highwaySessions); if (known.length > 32) delete highwaySessions[known[0]];
+    return;
+  }
+  if (msg.type === 'highway-closed') { if (typeof msg.highwayId === 'string') delete highwaySessions[msg.highwayId]; return; }
   if (msg.type === 'remember-computer' || msg.type === 'forget-computer') {
     var pairingValue = msg.type === 'forget-computer' ? '' : msg.deviceCredential;
     if (typeof pairingValue !== 'string' || (pairingValue && !/^[a-f0-9]{64}$/.test(pairingValue))) return;
@@ -1434,17 +1671,26 @@ figma.ui.onmessage = async function (msg) {
   }
   if (msg.type === 'ui-mode') {
     if (!Object.prototype.hasOwnProperty.call(UI_MODES, msg.mode)) return;
-    uiMode = msg.mode;
-    var size = UI_MODES[uiMode]; figma.ui.resize(size[0], size[1]);
+    // Presets keep the bottom edge in place when the window sits low, so the
+    // stealth banner grows upward from its corner instead of off-screen.
+    var previous = uiSize, size = UI_MODES[msg.mode];
+    uiMode = msg.mode; resizeWindow(size[0], size[1], 0, lowerHalf() ? previous[1] - size[1] : 0);
     figma.ui.postMessage({ type: 'ui-mode', mode: uiMode });
-    // Serialize writes so a slow earlier save cannot overwrite the latest choice.
-    var selectedMode = uiMode;
-    uiStorageWrite = uiStorageWrite.then(function () { return figma.clientStorage.setAsync('ui-mode', selectedMode); }).catch(function () {});
     return;
   }
+  if (msg.type === 'ui-resize') {
+    if (uiMode === 'stealth' || ![msg.width, msg.height].every(isFinite)) return;
+    var clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); };
+    var shift = function (v) { return isFinite(v) ? clamp(v, -4000, 4000) : 0; };
+    resizeWindow(clamp(msg.width, UI_MIN[0], UI_MAX[0]), clamp(msg.height, UI_MIN[1], UI_MAX[1]), shift(msg.dx), shift(msg.dy));
+    if (msg.mode !== 'stealth' && Object.prototype.hasOwnProperty.call(UI_MODES, msg.mode)) uiMode = msg.mode;
+    return;
+  }
+  // The UI confirms first. Figma's own close button cannot be intercepted.
+  if (msg.type === 'close-plugin') { if (typeof figma.closePlugin === 'function') figma.closePlugin(); return; }
   if (msg.type === 'yielded') { finishYield(msg.k); return; }
-  if (msg.type === 'yield-timeout') { if (yieldWaiters[msg.k]) cancelCommands('*', 'UI yield acknowledgement timed out', 'yield-timeout'); return; }
-  if (msg.type === 'cancel') { cancelCommands(msg.id == null ? '*' : msg.id, msg.reason || 'daemon'); return; }
+  if (msg.type === 'yield-timeout') { var stuck = yieldWaiters[msg.k]; if (stuck) cancelCommands(stuck.job ? stuck.job.id : '*', 'UI yield acknowledgement timed out', 'yield-timeout'); return; }
+  if (msg.type === 'cancel') { cancelCommands(msg.id == null ? '*' : msg.id, msg.reason || 'daemon', undefined, typeof msg.channel === 'string' ? msg.channel : undefined); return; }
   if (msg.type === 'cmd' && isImmediate(msg.cmd)) {
     try { reply(msg, { result: await runCommand(msg.cmd) }); }
     catch (e) { reply(msg, { error: e.message, kind: e.kind || 'plugin', outcome: e.outcome || 'failed' }); }
@@ -1453,6 +1699,9 @@ figma.ui.onmessage = async function (msg) {
   if (msg.type === 'cmd' || msg.type === 'cmd-batch') { enqueue(msg); return; }
   if (msg.type === 'eval' || msg.type === 'eval-batch') reply(msg, { error: 'Use structured commands; this plugin cannot execute eval', kind: 'unsupported', outcome: 'not-started' });
 };
-try { if (typeof figma.on === 'function') figma.on('currentpagechange', function () { historyCandidate = null; status(); }); } catch (e) {}
-console.log('insula-figma-cli bridge started — ' + VERSION + ' protocol ' + PROTOCOL);
+try { if (typeof figma.on === 'function') figma.on('currentpagechange', function () {
+  historyCandidate = null; status();
+  if (!current) { try { sendSketch(figma.currentPage, false); } catch (e) {} }
+}); } catch (e) {}
+console.log('figma-cli-ultimate bridge started — ' + VERSION + ' protocol ' + PROTOCOL);
 openConsole();

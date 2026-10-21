@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5b6475"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b82b23"/></marker>
+    <style>
+      .title { font-size: 26px; font-weight: 600; fill: #1c1c1e; }
+      .subtitle { font-size: 15px; fill: #636366; }
+      .panel { font-size: 18px; font-weight: 700; fill: #1c1c1e; }
+      .panelSub { font-size: 13px; fill: #636366; }
+      .h { font-size: 15px; font-weight: 600; fill: #1c1c1e; }
+      .s { font-size: 13px; fill: #4b5563; }
+      .bad { font-size: 13px; fill: #8f1d17; }
+      .good { font-size: 13px; fill: #1d6b33; }
+      .badge { font-size: 12px; font-weight: 700; fill: #ffffff; }
+    </style>
+  </defs>
+  <rect width="1400" height="780" fill="#ffffff"/>
+  <text class="title" x="40" y="50">Base plugin vs. this fork</text>
+  <text class="subtitle" x="40" y="76">Same Figma, same daemon port. What changes is how work gets in, waits, fails and recovers.</text>
+
+  <!-- Base -->
+  <rect x="40" y="100" width="640" height="650" rx="16" fill="#fdf4f3" stroke="#efc6c2"/>
+  <text class="panel" x="64" y="134">Base plugin</text>
+  <text class="panelSub" x="64" y="156">stock figma-cli 2.2.5, Safe Mode</text>
+  <rect x="64" y="182" width="120" height="44" rx="10" fill="#ffffff" stroke="#c7c7cc"/><text class="h" x="84" y="209">Agent A</text>
+  <rect x="64" y="238" width="120" height="44" rx="10" fill="#ffffff" stroke="#c7c7cc"/><text class="h" x="84" y="265">Agent B</text>
+  <rect x="64" y="294" width="120" height="44" rx="10" fill="#ffffff" stroke="#c7c7cc"/><text class="h" x="84" y="321">Agent C</text>
+  <rect x="250" y="216" width="170" height="88" rx="12" fill="#ffffff" stroke="#c7c7cc"/>
+  <text class="h" x="266" y="244">Daemon :3456</text><text class="s" x="266" y="266">one pluginWs</text><text class="s" x="266" y="284">last connection wins</text>
+  <path d="M184 204 C220 204 220 246 248 246" fill="none" stroke="#5b6475" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M184 260 H248" fill="none" stroke="#5b6475" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M184 316 C220 316 220 274 248 274" fill="none" stroke="#5b6475" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="486" y="216" width="170" height="88" rx="12" fill="#ffffff" stroke="#b82b23" stroke-width="1.5"/>
+  <text class="h" x="502" y="244">Plugin</text><text class="s" x="502" y="266">eval(JavaScript string)</text><text class="bad" x="502" y="284">blocked on Figma 126+</text>
+  <path d="M420 260 H484" fill="none" stroke="#b82b23" stroke-width="2.5" marker-end="url(#ar)"/>
+  <circle cx="452" cy="244" r="12" fill="#b82b23"/><text class="badge" x="447" y="249">✕</text>
+
+  <g transform="translate(64 372)">
+    <circle cx="10" cy="10" r="10" fill="#b82b23"/><text class="badge" x="6" y="14">1</text><text class="bad" x="30" y="15">No queue: requests race, and a timed-out batch keeps running beside its retry.</text>
+    <circle cx="10" cy="48" r="10" fill="#b82b23"/><text class="badge" x="6" y="52">2</text><text class="bad" x="30" y="53">The UI closes the socket after 8 s without a pong: a busy Figma looks dead.</text>
+    <circle cx="10" cy="86" r="10" fill="#b82b23"/><text class="badge" x="6" y="90">3</text><text class="bad" x="30" y="91">Any close rejects every request in flight, including other callers'.</text>
+    <circle cx="10" cy="124" r="10" fill="#b82b23"/><text class="badge" x="6" y="128">4</text><text class="bad" x="30" y="129">No yields inside batches: long builds freeze the Figma main thread.</text>
+    <circle cx="10" cy="162" r="10" fill="#b82b23"/><text class="badge" x="6" y="166">5</text><text class="bad" x="30" y="167">No canvas safety, cancellation, rollback or typed outcomes.</text>
+    <circle cx="10" cy="200" r="10" fill="#b82b23"/><text class="badge" x="6" y="204">6</text><text class="bad" x="30" y="205">Unauthenticated /plugin socket; a status-only window.</text>
+    <circle cx="10" cy="238" r="10" fill="#b82b23"/><text class="badge" x="6" y="242">7</text><text class="bad" x="30" y="243">One connection only: no parallel files, no isolation between agents.</text>
+  </g>
+  <rect x="64" y="650" width="592" height="76" rx="12" fill="#ffffff" stroke="#efc6c2"/>
+  <text class="h" x="84" y="680">Result under load</text>
+  <text class="s" x="84" y="702">Freezes and disconnects on long runs; one stuck request stalls every</text>
+  <text class="s" x="84" y="720">agent; recovery means restarting things by hand.</text>
+
+  <!-- Fork -->
+  <rect x="720" y="100" width="640" height="650" rx="16" fill="#f1f8f3" stroke="#bfe0c8"/>
+  <text class="panel" x="744" y="134">This fork</text>
+  <text class="panelSub" x="744" y="156">figma-cli-ultimate, protocol 4 with highways</text>
+  <rect x="744" y="182" width="104" height="44" rx="10" fill="#f6f2fd" stroke="#8b4ad2"/><text class="h" x="762" y="209">Agent A</text>
+  <rect x="744" y="238" width="104" height="44" rx="10" fill="#eef8f9" stroke="#087f8c"/><text class="h" x="762" y="265">Agent B</text>
+  <rect x="744" y="294" width="104" height="44" rx="10" fill="#fdf5ea" stroke="#b56800"/><text class="h" x="762" y="321">Agent C</text>
+  <rect x="884" y="182" width="104" height="156" rx="12" fill="#e6efff" stroke="#0066cc"/>
+  <text class="h" x="900" y="210">Lobby</text><text class="s" x="900" y="230">:3456</text><text class="s" x="900" y="262">token,</text><text class="s" x="900" y="280">build,</text><text class="s" x="900" y="298">ports and</text><text class="s" x="900" y="316">tickets</text>
+  <rect x="1022" y="182" width="150" height="44" rx="10" fill="#ffffff" stroke="#8b4ad2"/><text class="s" x="1036" y="209">highway A · own port</text>
+  <rect x="1022" y="238" width="150" height="44" rx="10" fill="#ffffff" stroke="#087f8c"/><text class="s" x="1036" y="265">highway B · own port</text>
+  <rect x="1022" y="294" width="150" height="44" rx="10" fill="#ffffff" stroke="#b56800"/><text class="s" x="1036" y="321">highway C · own port</text>
+  <path d="M848 204 H882 M848 260 H882 M848 316 H882" stroke="#0066cc" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <path d="M988 204 H1020 M988 260 H1020 M988 316 H1020" stroke="#5b6475" stroke-width="2"/>
+  <rect x="1206" y="182" width="130" height="156" rx="12" fill="#ffffff" stroke="#248a3d" stroke-width="1.5"/>
+  <text class="h" x="1220" y="210">Plugin</text><text class="s" x="1220" y="232">structured JSON</text><text class="s" x="1220" y="250">ops, a queue per</text><text class="s" x="1220" y="268">channel, turns</text><text class="s" x="1220" y="286">every 100 nodes</text>
+  <path d="M1172 204 H1204 M1172 260 H1204 M1172 316 H1204" stroke="#5b6475" stroke-width="2"/>
+
+  <g transform="translate(744 372)">
+    <circle cx="10" cy="10" r="10" fill="#248a3d"/><text class="badge" x="6" y="14">1</text><text class="good" x="30" y="15">Queues per channel; cancellation; no automatic replay. Batches stop at the first failure.</text>
+    <circle cx="10" cy="48" r="10" fill="#248a3d"/><text class="badge" x="6" y="52">2</text><text class="good" x="30" y="53">The daemon owns the keepalive (60 s); highway drops detach and resume.</text>
+    <circle cx="10" cy="86" r="10" fill="#248a3d"/><text class="badge" x="6" y="90">3</text><text class="good" x="30" y="91">Requests belong to their socket; a failure stays on its own highway.</text>
+    <circle cx="10" cy="124" r="10" fill="#248a3d"/><text class="badge" x="6" y="128">4</text><text class="good" x="30" y="129">Yields every 100 nodes keep Figma responsive and let other agents in.</text>
+    <circle cx="10" cy="162" r="10" fill="#248a3d"/><text class="badge" x="6" y="166">5</text><text class="good" x="30" y="167">Zones, rollback of owned nodes, typed errors and five honest outcomes.</text>
+    <circle cx="10" cy="200" r="10" fill="#248a3d"/><text class="badge" x="6" y="204">6</text><text class="good" x="30" y="205">Paired computer, token, build fingerprint, tickets; a live console.</text>
+    <circle cx="10" cy="238" r="10" fill="#248a3d"/><text class="badge" x="6" y="242">7</text><text class="good" x="30" y="243">Up to 4 files in parallel and 16 isolated highways shared among them.</text>
+  </g>
+  <rect x="744" y="650" width="592" height="76" rx="12" fill="#ffffff" stroke="#bfe0c8"/>
+  <text class="h" x="764" y="680">Measured</text>
+  <text class="s" x="764" y="702">40-cycle soak passed; 12 contending layout jobs (12,096 nodes) ended with no</text>
+  <text class="s" x="764" y="720">hold. Failures are scoped, reviewable and never replayed blindly.</text>
+</svg>

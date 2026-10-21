@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <pattern id="held" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#fcebea"/><rect width="4" height="10" fill="#f3c4c0"/></pattern>
+    <style>
+      .title { font-size: 26px; font-weight: 600; fill: #1c1c1e; }
+      .subtitle { font-size: 15px; fill: #636366; }
+      .panel { font-size: 18px; font-weight: 700; fill: #1c1c1e; }
+      .panelSub { font-size: 13px; fill: #636366; }
+      .h { font-size: 15px; font-weight: 600; fill: #1c1c1e; }
+      .s { font-size: 13px; fill: #4b5563; }
+      .bad { font-size: 13px; font-weight: 600; fill: #8f1d17; }
+      .good { font-size: 13px; font-weight: 600; fill: #1d6b33; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+      .icon { font-size: 15px; font-weight: 700; fill: #ffffff; }
+    </style>
+  </defs>
+  <rect width="1400" height="800" fill="#ffffff"/>
+  <text class="title" x="40" y="50">When something goes wrong, it stays where it happened</text>
+  <text class="subtitle" x="40" y="76">"Uncertain" means the bridge cannot prove what Figma did. That work is held for review and never replayed automatically.</text>
+
+  <!-- Before -->
+  <rect x="40" y="100" width="640" height="560" rx="16" fill="#fdf7f6" stroke="#efc6c2"/>
+  <text class="panel" x="64" y="134">Before: one hold blocks the whole file</text>
+  <rect x="64" y="156" width="592" height="300" rx="12" fill="#ffffff" stroke="#c7cdd8"/>
+  <rect x="64" y="156" width="592" height="40" rx="12" fill="url(#held)"/><rect x="64" y="180" width="592" height="16" fill="url(#held)"/>
+  <text class="bad" x="84" y="182">File X · file-wide hold after one uncertain write</text>
+  <g transform="translate(84 214)">
+    <circle cx="14" cy="16" r="14" fill="#b82b23"/><text class="icon" x="9" y="21">!</text>
+    <text class="h" x="40" y="12">Agent A</text><text class="s" x="40" y="30">its batch ended uncertain (socket lost mid-job)</text>
+    <circle cx="14" cy="76" r="14" fill="#b82b23"/><text class="icon" x="9" y="81">✕</text>
+    <text class="h" x="40" y="72">Agent B</text><text class="bad" x="40" y="90">refused: worker-uncertain</text>
+    <circle cx="14" cy="136" r="14" fill="#b82b23"/><text class="icon" x="9" y="141">✕</text>
+    <text class="h" x="40" y="132">Agent C</text><text class="bad" x="40" y="150">refused: worker-uncertain</text>
+    <circle cx="14" cy="196" r="14" fill="#9aa3b2"/><text class="icon" x="10" y="201">⏸</text>
+    <text class="h" x="40" y="192">Writes without a zone</text><text class="bad" x="40" y="210">also refused while any old zone existed (protected-file)</text>
+  </g>
+  <rect x="64" y="476" width="592" height="164" rx="12" fill="#ffffff" stroke="#efc6c2"/>
+  <text class="h" x="84" y="506">Recovery</text>
+  <text class="s" x="84" y="530">A file hold could only be cleared by a late reply from the same session,</text>
+  <text class="s" x="84" y="550">which never came after a reconnect. In practice: inspect the canvas,</text>
+  <text class="s" x="84" y="570">edit coordinator-journal.json by hand, restart the daemon and reopen</text>
+  <text class="s" x="84" y="590">the plugin (see recovery/2026-10-20-page-hold/). Finished zones from</text>
+  <text class="s" x="84" y="610">old test runs stayed on the map and kept blocking unscoped writers.</text>
+
+  <!-- After -->
+  <rect x="720" y="100" width="640" height="560" rx="16" fill="#f3faf5" stroke="#bfe0c8"/>
+  <text class="panel" x="744" y="134">After: holds are scoped to their channel</text>
+  <rect x="744" y="156" width="592" height="300" rx="12" fill="#ffffff" stroke="#c7cdd8"/>
+  <rect x="744" y="156" width="592" height="40" rx="12" fill="#eef8f1"/><rect x="744" y="180" width="592" height="16" fill="#eef8f1"/>
+  <text class="good" x="764" y="182">File X · keeps working</text>
+  <g transform="translate(764 214)">
+    <circle cx="14" cy="16" r="14" fill="#b82b23"/><text class="icon" x="9" y="21">!</text>
+    <text class="h" x="40" y="12">Highway A</text><text class="bad" x="40" y="30">held: only this highway waits for review</text>
+    <circle cx="14" cy="76" r="14" fill="#248a3d"/><text class="icon" x="8" y="81">✓</text>
+    <text class="h" x="40" y="72">Highway B</text><text class="good" x="40" y="90">keeps writing</text>
+    <circle cx="14" cy="136" r="14" fill="#248a3d"/><text class="icon" x="8" y="141">✓</text>
+    <text class="h" x="40" y="132">File channel (lobby callers)</text><text class="good" x="40" y="150">keeps writing</text>
+    <circle cx="14" cy="196" r="14" fill="#248a3d"/><text class="icon" x="8" y="201">✓</text>
+    <text class="h" x="40" y="192">Writes without a zone</text><text class="good" x="40" y="210">no longer refused because other zones exist</text>
+  </g>
+  <rect x="1150" y="226" width="160" height="104" rx="6" fill="url(#held)" stroke="#b82b23" stroke-width="1.5"/>
+  <text class="tag" x="1162" y="248" fill="#8f1d17">A'S HELD ZONE</text>
+  <text class="s" x="1162" y="272">no other zone</text><text class="s" x="1162" y="290">may overlap it</text>
+  <text class="s" x="1162" y="314">until reviewed</text>
+  <rect x="744" y="476" width="592" height="164" rx="12" fill="#ffffff" stroke="#bfe0c8"/>
+  <text class="h" x="764" y="506">Recovery</text>
+  <text class="s" x="764" y="530">Zones: reconcile with the plugin's durable receipt (read-only proof of</text>
+  <text class="s" x="764" y="550">commit or rollback). Anything a proof cannot settle: Release after review</text>
+  <text class="s" x="764" y="570">in the console, two clicks, recorded as a receipt. Socket drops are not</text>
+  <text class="s" x="764" y="590">failures at all: the session detaches and resumes within 60 s. Finished</text>
+  <text class="s" x="764" y="610">zones leave the map after 2 minutes and only protect their own area.</text>
+
+  <!-- Outcomes -->
+  <rect x="40" y="680" width="1320" height="100" rx="12" fill="#f4f6fb"/>
+  <text class="h" x="60" y="708">Outcomes and what they do to an area</text>
+  <rect x="60" y="724" width="14" height="14" rx="3" fill="#248a3d"/><text class="s" x="82" y="736">succeeded → committed (area kept, map fades)</text>
+  <rect x="400" y="724" width="14" height="14" rx="3" fill="#9aa3b2"/><text class="s" x="422" y="736">not-started, rolled-back → released (safe to retry)</text>
+  <rect x="760" y="724" width="14" height="14" rx="3" fill="#b82b23"/><text class="s" x="782" y="736">partial, uncertain, disconnected → held (review first)</text>
+  <text class="s" x="60" y="764">Retry only what was reported not-started. Never clean up by name or replay whole sections after a failure.</text>
+</svg>

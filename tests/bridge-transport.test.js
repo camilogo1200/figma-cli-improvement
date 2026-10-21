@@ -22,6 +22,59 @@ function fixture(t, options = {}) {
 }
 function submit(bridge, options) { return bridge.dispatch('cmd', { cmd: { op: 'create', spec: {} } }, options); }
 
+test('page navigation survives ten seconds and the normal sixty-second command budget', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
+  const { bridge, ws } = fixture(t);
+  const job = bridge.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } });
+  const id = ws.sent[0].id;
+  ws.message({ type: 'busy', id, busy: true });
+  for (let i = 0; i < 7; i++) { t.mock.timers.tick(10000); ws.emit('pong'); }
+  assert.equal(bridge.pending.size, 1);
+  ws.message({ type: 'result', id, result: { current: true } }); await job;
+  assert.equal(ws.sent.some(m => m.action === 'cancel'), false);
+});
+
+test('navigation expiry fences the file until acknowledgement without persisting artwork uncertainty', async t => {
+  const { bridge, ws } = fixture(t);
+  const job = bridge.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } });
+  const rejected = assert.rejects(job, { outcome: 'uncertain' });
+  const pending = [...bridge.pending.values()][0];
+  bridge.expire(pending, 'daemon-timeout', 'expired'); await rejected;
+  await assert.rejects(submit(bridge), { kind: 'worker-uncertain' });
+  ws.message({ type: 'result', id: pending.id, error: 'Navigation cancelled', outcome: 'uncertain' });
+  assert.equal(bridge.recoveryRequired, false); assert.equal(bridge.diagnostics().uncertain, 0);
+  const next = submit(bridge); ws.message({ type: 'result', id: ws.sent.at(-1).id, result: 'ok' }); await next;
+});
+
+test('disconnected navigation can reconnect without daemon recovery; mixed batches retain recovery', async t => {
+  for (const mutation of [false, true]) {
+    const { bridge, ws } = fixture(t);
+    const cmds = [{ op: 'page', action: 'select', id: 'heavy' }];
+    if (mutation) cmds.unshift({ op: 'update', id: 'existing' });
+    const job = bridge.dispatch('cmd-batch', { cmds });
+    const rejected = assert.rejects(job, { outcome: 'uncertain' });
+    const pending = [...bridge.pending.values()][0];
+    bridge.expire(pending, 'client-gone', 'lost caller'); await rejected; ws.close();
+    assert.equal(bridge.recoveryRequired, mutation);
+    if (!mutation) {
+      const replacement = new Socket(); bridge.attach(replacement);
+      replacement.message({ type: 'hello', protocol: PROTOCOL, build: 'test', busy: false });
+      const next = submit(bridge);
+      replacement.message({ type: 'result', id: replacement.sent.at(-1).id, result: 'ok' }); await next;
+    }
+  }
+});
+
+test('explicit navigation deadlines still expire and never report an in-flight switch as not-started', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
+  const { bridge, ws } = fixture(t);
+  const job = bridge.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } }, { timeoutMs: 20 });
+  const rejected = assert.rejects(job, { kind: 'daemon-timeout', outcome: 'uncertain' });
+  const id = ws.sent[0].id; ws.message({ type: 'busy', id, busy: true });
+  t.mock.timers.tick(21); await rejected; assert.equal(bridge.diagnostics().uncertain, 1);
+  t.mock.timers.tick(5000); assert.equal(bridge.connected(), false); assert.equal(bridge.recoveryRequired, false);
+});
+
 test('file-key fencing and lifecycle exclusion run before sending work', async t => {
   const { bridge, ws } = fixture(t, { identity: { fileKey: 'copyKey', instanceId: 'instance' } });
   ws.message({ type: 'status', file: 'Copy', fileKey: 'copyKey', instanceId: 'instance', page: 'Page', pageId: '1:2' });

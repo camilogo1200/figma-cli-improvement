@@ -42,7 +42,7 @@ export async function stop() {
   const local = buildIdentity(), old = await existing();
   if (!old) return { stopped: false };
   if (old.root !== local.root || old.mode !== 'safe') throw new Error('Port 3456 belongs to another checkout or mode; stop it from its own launcher.');
-  if (![3, local.protocol].includes(old.protocol) || !old.daemonBuild) throw new Error('Legacy daemon: close its Figma plugin and stop it from the owning CLI (tools/figma-cli/src/index.js daemon stop), then use this launcher start.');
+  if (![3, local.protocol].includes(old.protocol) || !old.daemonBuild) throw new Error('Legacy daemon: close its Figma plugin and stop it from the owning CLI (node src/index.js daemon stop), then use this launcher start.');
   if (old.busy || old.pending || old.cdpUncertain) throw new Error('Work is active or uncertain. Cancel and reconcile it before restarting.');
   // Ask the owning build to stop atomically. Never kill a PID read from a stale file.
   await request('/shutdown', { payload: { expectedRoot: old.root, expectedDaemonBuild: old.daemonBuild, protocol: old.protocol } });

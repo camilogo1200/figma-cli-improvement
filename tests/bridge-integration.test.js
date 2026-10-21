@@ -109,6 +109,39 @@ test('real daemon HTTP/WebSocket lifecycle on an isolated ephemeral port', { tim
     assert.equal((await coordinate({op:'status'})).reservations[0].state,'committed');
     assert.equal((await coordinate({op:'remove-lane',laneId:lane.laneId},route)).removed,true);
   });
+  await t.test('a file client gets its own highway from the lobby and releases it when done', async () => {
+    // The plugin end: dial each highway the daemon announces on the paired socket.
+    const roads = [];
+    ws.on('message', b => {
+      const m = JSON.parse(b); if (m.type !== 'open-highway') return;
+      const road = new WebSocket(`ws://127.0.0.1:${m.port}/plugin`); roads.push({ road, port: m.port });
+      road.on('open', () => road.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket: m.ticket, protocol: build.protocol, build: build.pluginBuild, busy: false, fileKey: 'testFile', instanceId: 'test-instance' })));
+      road.on('message', data => {
+        const msg = JSON.parse(data); if (!msg.action || msg.action === 'cancel') return;
+        road.send(JSON.stringify({ type: 'busy', id: msg.id, busy: true, op: msg.cmd.op }));
+        road.send(JSON.stringify({ type: 'result', id: msg.id, result: { viaHighway: m.port, op: msg.cmd.op } }));
+        road.send(JSON.stringify({ type: 'busy', id: msg.id, busy: false }));
+      });
+    });
+    const before = commands.length;
+    const code = `import {forFile} from ${JSON.stringify(new URL('../file-client.mjs', import.meta.url).href)}; const c=forFile('testFile'); const r=await c.cmd({op:'find',name:'x'}); await c.close(); console.log(JSON.stringify(r));`;
+    const { stdout } = await exec(process.execPath, ['--input-type=module', '-e', code], { windowsHide: true, timeout: 8000,
+      env: { ...process.env, DAEMON_PORT: String(port), FIGMA_CLI_STATE_DIR: state } });
+    const result = JSON.parse(stdout);
+    assert.equal(result.op, 'find'); assert.equal(result.viaHighway, roads[0].port); assert.notEqual(roads[0].port, port);
+    assert.equal(commands.length, before, 'nothing went through the shared control socket');
+    await until(async () => (await api('/exec', { payload: envelope({ action: 'highway', cmd: { op: 'list' } }) })).result.length === 0);
+    const lobby = (await api('/diagnostics')).bridge.coordinator.lobby.map(e => e.event);
+    for (const event of ['opened', 'plugin-joined', 'agent-joined', 'closed']) assert.ok(lobby.includes(event), event + ' in ' + lobby);
+    // A script that never closes its client must still exit when it is done: an idle
+    // highway does not hold the process open (the daemon closes it after the agent leaves).
+    const forgetful = `import {forFile} from ${JSON.stringify(new URL('../file-client.mjs', import.meta.url).href)}; const c=forFile('testFile'); console.log(JSON.stringify(await c.cmd({op:'find',name:'y'})));`;
+    const second = await exec(process.execPath, ['--input-type=module', '-e', forgetful], { windowsHide: true, timeout: 8000,
+      env: { ...process.env, DAEMON_PORT: String(port), FIGMA_CLI_STATE_DIR: state } });
+    assert.equal(JSON.parse(second.stdout).op, 'find');
+    await until(async () => (await api('/diagnostics')).bridge.coordinator.lobby.some(e => e.event === 'agent-away'));
+    roads.forEach(r => r.road.terminate());
+  });
   await t.test('shutdown is ownership checked and drains the owned idle daemon', async () => {
     await assert.rejects(api('/shutdown', { payload: envelope({ expectedRoot: 'other' }) }), { kind: 'build-mismatch' });
     const exiting = once(child, 'exit');

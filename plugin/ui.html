@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Insula · Worker console</title>
+<title>figma-cli-ultimate · Worker console</title>
 <style>
 :root { color-scheme:light; --bg:#f2f2f7; --card:#fff; --ink:#1c1c1e; --muted:#636366; --line:#d1d1d6; --blue:#0066cc; --green:#237b45; --red:#b82b23; --wash:#e8f1ff; --orange:#8d5700; }
 .figma-dark { color-scheme:dark; --bg:#1c1c1e; --card:#2c2c2e; --ink:#f2f2f7; --muted:#aeaeb2; --line:#48484a; --blue:#64adff; --green:#7bdb98; --red:#ff9b93; --wash:#23354c; --orange:#ffca80; }
@@ -226,49 +226,103 @@ body[data-theme="ios"] .resource-tile { background:linear-gradient(145deg,color-
 #connection-challenge { font-size:25px; letter-spacing:5px; font-weight:650; }
 .connection-settings { margin-bottom:12px; }.connection-settings p,.connection-settings button { margin:8px 8px 8px 0; }
 body[data-connection="setup"]>.layout,body[data-connection="setup"]>#compact { display:none; }
+/* Stealth banner: the smallest window, one translucent line in the corner. */
+#stealth { display:none; }
+html:has(body[data-mode="stealth"]),body[data-mode="stealth"] { background:transparent; }
+body[data-mode="stealth"]>:not(#stealth) { display:none!important; }
+body[data-mode="stealth"]>#stealth { display:flex; flex:1; align-items:center; gap:10px; min-height:0; padding:0 5px 0 12px; color:#fff; background:rgba(0,0,0,.75); border:1px solid rgba(255,255,255,.24); border-radius:10px; font-size:11px; white-space:nowrap; overflow:hidden; }
+#stealth-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+#stealth button { flex:none; min-height:24px; padding:2px 9px; font-size:11px; color:#fff; background:transparent; border:1px solid rgba(255,255,255,.42); border-radius:7px; }
+#stealth button:hover { background:rgba(255,255,255,.14); }#stealth button:focus-visible { outline-color:#fff; }
+/* Window controls and edge/corner resizing (Figma windows have no native resize). */
+.window-actions { display:flex; gap:4px; flex:none; }.icon-button { display:grid; place-items:center; width:28px; min-height:28px; padding:0; }.icon-button .ic { width:14px; height:14px; }
+.compact-head .icon-button { width:26px; min-height:26px; color:var(--muted); border-color:var(--line); }
+.resize-grip { position:fixed; z-index:60; touch-action:none; }
+.resize-grip[data-edge="n"],.resize-grip[data-edge="s"] { left:12px; right:12px; height:6px; cursor:ns-resize; }.resize-grip[data-edge="n"] { top:0; }.resize-grip[data-edge="s"] { bottom:0; }
+.resize-grip[data-edge="e"],.resize-grip[data-edge="w"] { top:12px; bottom:12px; width:6px; cursor:ew-resize; }.resize-grip[data-edge="e"] { right:0; }.resize-grip[data-edge="w"] { left:0; }
+.resize-grip[data-edge$="w"][data-edge^="n"],.resize-grip[data-edge="se"] { width:12px; height:12px; cursor:nwse-resize; }.resize-grip[data-edge="ne"],.resize-grip[data-edge="sw"] { width:12px; height:12px; cursor:nesw-resize; }
+.resize-grip[data-edge="nw"] { top:0; left:0; }.resize-grip[data-edge="ne"] { top:0; right:0; }.resize-grip[data-edge="sw"] { bottom:0; left:0; }.resize-grip[data-edge="se"] { bottom:0; right:0; }
+.resize-grip[data-edge="se"]::after { content:''; position:absolute; right:3px; bottom:3px; width:6px; height:6px; border-right:1.5px solid var(--muted); border-bottom:1.5px solid var(--muted); opacity:.6; }
+/* Close confirmation, painted in the active theme. */
+.dialog-backdrop { position:fixed; inset:0; z-index:80; display:grid; place-items:center; padding:14px; background:color-mix(in srgb,#000 40%,transparent); }
+.dialog-card { width:min(430px,100%); max-height:calc(100vh - 28px); overflow-y:auto; display:grid; gap:10px; padding:18px; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:var(--panel-radius); }
+.dialog-card.live { border-color:color-mix(in srgb,var(--red) 45%,var(--line)); box-shadow:inset 0 3px 0 var(--red); }
+.dialog-card .eyebrow { color:var(--muted); }.dialog-card.live .eyebrow { color:var(--red); }.dialog-card h3 { font-size:17px; letter-spacing:-.3px; }.dialog-card p { font-size:11px; color:var(--muted); }
+.dialog-card ul { margin:0; padding-left:17px; display:grid; gap:5px; font-size:11px; }.dialog-card li b { font-weight:600; }
+.dialog-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:2px; }.dialog-actions .keep { color:var(--action-ink); background:var(--action-bg); border-color:var(--action-bg); font-weight:600; }.dialog-actions .close-anyway { margin-left:auto; color:var(--red); }
+/* Canvas map: every file and its active pages; zones exact, artwork coarse. */
+.map-files { display:grid; gap:10px; }.map-file { border:1px solid var(--line); border-radius:var(--panel-radius); padding:10px; background:var(--card); min-width:0; }
+.map-file-head { display:flex; align-items:center; gap:7px; margin-bottom:8px; font-size:11px; min-width:0; }.map-file-head>i { width:8px; height:8px; border-radius:2px; background:var(--accent); flex:none; }.map-file-head b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.map-file-head small { font-size:9px; white-space:nowrap; }
+.map-pages { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }.map-pages.full { grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); }
+.map-page { min-width:0; }.map-page h4 { display:flex; justify-content:space-between; gap:6px; margin:0 0 5px; font-size:10px; font-weight:600; }.map-page h4 span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.map-page h4 small { font-weight:400; white-space:nowrap; }
+.map-page .canvas-map { height:118px; }.map-page .canvas-map.full { height:200px; }.map-page .canvas-map.idle { height:36px; }
+.canvas-map .artwork { fill:var(--muted); fill-opacity:.24; }.canvas-map .zone-waiting { stroke-dasharray:6 5; }
+.canvas-map .target-border { fill:currentColor; fill-opacity:.07; stroke:currentColor; stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-dasharray:2 3; }
+.canvas-map .target.read .target-border,.canvas-map .target.snapshot .target-border,.canvas-map .target.navigation .target-border { fill-opacity:.03; stroke-dasharray:1 4; }
+.map-note { margin-top:5px; font-size:9px; color:var(--muted); overflow-wrap:anywhere; }.map-page .map-legend .legend-row { padding:5px 0; }
+/* Highways: one row per agent's private road into a file. */
+.highway-list { display:grid; gap:8px; }.highway-row { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) auto auto; gap:10px; align-items:center; padding:10px 12px; background:var(--card); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:0 10px 10px 0; min-width:0; }
+.hw-who { min-width:0; }.hw-who b { display:block; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.hw-who small,.hw-job small { display:block; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hw-job { min-width:0; font-size:11px; }.hw-job>span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hw-ends { display:flex; gap:8px; align-items:center; font-size:10px; color:var(--muted); white-space:nowrap; }.hw-ends .end { display:inline-flex; gap:3px; align-items:center; }.hw-ends .end .ic { width:12px; height:12px; }
+.hw-ends .end.connected { color:var(--green); }.hw-ends .end.away { color:var(--orange); }.hw-ends .end.waiting { color:var(--muted); }
+.highway-row.held { border-left-color:var(--red); }
+@media(max-width:700px) { .highway-row { grid-template-columns:minmax(0,1fr) auto; }.hw-job,.hw-ends { grid-column:1 / -1; } }
+.lobby-log { display:grid; }.lobby-row { display:grid; grid-template-columns:62px minmax(0,190px) minmax(0,1fr); gap:8px; padding:6px 0; border-bottom:.5px solid var(--line); font-size:10px; }.lobby-row:last-child { border:0; }.lobby-row span,.lobby-row small { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.held-list { display:grid; gap:6px; margin-top:12px; }.held-item { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:7px 9px; border:1px solid var(--hero-line); border-radius:8px; background:var(--hero-chip-bg); font-size:10px; }.held-item span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Timeline categories: reads and snapshots are visible as their own marks. */
+.time-file { margin:10px 0 0; font-size:10px; font-weight:600; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.time-file:first-child { margin-top:0; }
+.time-track i.cat-query { background:var(--chart-cyan); }.time-track i.cat-screenshot { background:var(--chart-orange); }.time-track i.cat-control { background:var(--slate); }.time-track i.failed { box-shadow:inset 0 0 0 1.5px var(--red); }
+.time-legend { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0 0 103px; font-size:9px; color:var(--muted); }.time-legend span { display:flex; gap:4px; align-items:center; }.time-legend i { width:8px; height:8px; border-radius:2px; background:var(--accent); }
 </style>
 </head>
 <body data-mode="standard" data-theme="ios">
+<section id="stealth" aria-label="figma CLI status"><span id="stealth-text" role="status">figma CLI - Connecting - 3456</span><button id="stealth-details" type="button">Show details</button></section>
 <div id="preview-label" hidden>Preview · sample data · no connection to Figma</div>
 <header class="top">
   <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M14 17.5h7m-3.5-3.5v7"/></svg></div>
   <div class="brand"><h1>Worker console</h1><div class="sub"><span id="dot" class="dot connecting"></span><span id="status" role="status">Connecting…</span></div></div>
-  <div class="appearance-controls"><label class="view theme-view">Theme <select id="ui-theme" aria-label="Color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><label class="view">View <select id="mode" aria-label="Window size"><option value="compact">Compact</option><option value="standard" selected>Standard</option><option value="console">Console</option></select></label></div>
+  <div class="appearance-controls"><label class="view theme-view">Theme <select id="ui-theme" aria-label="Color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><label class="view">View <select id="mode" aria-label="Window size"><option value="stealth">Banner</option><option value="compact">Compact</option><option value="standard" selected>Standard</option><option value="console">Console</option></select></label></div>
+  <div class="window-actions"><button class="icon-button" data-window="stealth" data-icon="minimize" title="Minimize to the banner" aria-label="Minimize to the banner"></button><button class="icon-button" data-window="close" data-icon="close" title="Close the bridge window" aria-label="Close the bridge window"></button></div>
 </header>
 <section id="pairing" class="notice connection-card" aria-labelledby="connection-title">
   <div class="connection-icon" aria-hidden="true">↔</div><h2 id="connection-title">Connect this computer</h2>
-  <p id="connection-note" class="muted" role="status">Connect once. Insula will remember this computer when you reopen the plugin.</p>
+  <p id="connection-note" class="muted" role="status">Connect once. figma-cli-ultimate will remember this computer when you reopen the plugin.</p>
   <p id="connection-challenge" hidden></p>
   <button id="connect-computer" class="primary">Connect this computer</button>
-  <details><summary>Advanced pairing &amp; setup</summary><p>If the companion is unavailable, install it once from the project folder:</p><code>node tools/figma-cli-insula/figma.mjs companion-install</code><p>For manual pairing, run <code>figma.mjs pair</code> with the project launcher and paste its two-minute code.</p><label>Pairing code <input id="pair-code" type="password" autocomplete="off" spellcheck="false" maxlength="24"></label><button id="pair">Use pairing code</button></details>
+  <details><summary>Advanced pairing &amp; setup</summary><p>If the companion is unavailable, install it once from the project folder:</p><code>node bridge/launcher.mjs companion-install</code><p>For manual pairing, run <code>node bridge/launcher.mjs pair</code> with the project launcher and paste its two-minute code.</p><label>Pairing code <input id="pair-code" type="password" autocomplete="off" spellcheck="false" maxlength="24"></label><button id="pair">Use pairing code</button></details>
 </section>
-<section id="compact" aria-label="Compact worker dashboard"><div class="compact-head"><span class="mark" title="Insula" aria-label="Insula">i</span><label class="compact-theme"><span class="sr-only">Color theme</span><select id="compact-theme" aria-label="Compact color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><button id="details" title="Open the full worker console">Open console ↗</button></div><div id="compact-focus" class="compact-focus"></div><div id="compact-metrics" class="compact-metrics"></div><div id="compact-network" class="compact-network"></div><p class="compact-caption"><span id="compact-live">Connecting</span> · <span id="compact-caption"></span></p></section>
+<section id="compact" aria-label="Compact worker dashboard"><div class="compact-head"><span class="mark" title="figma-cli-ultimate" aria-label="figma-cli-ultimate">f</span><label class="compact-theme"><span class="sr-only">Color theme</span><select id="compact-theme" aria-label="Compact color theme"><option value="ios">IOS</option><option value="signal">Signal</option></select></label><button id="details" title="Open the full worker console">Open console ↗</button><button class="icon-button" data-window="stealth" data-icon="minimize" title="Minimize to the banner" aria-label="Minimize to the banner"></button><button class="icon-button" data-window="close" data-icon="close" title="Close the bridge window" aria-label="Close the bridge window"></button></div><div id="compact-focus" class="compact-focus"></div><div id="compact-metrics" class="compact-metrics"></div><div id="compact-network" class="compact-network"></div><p class="compact-caption"><span id="compact-live">Connecting</span> · <span id="compact-caption"></span></p></section>
 <div class="layout">
-  <nav aria-label="Console sections"><div class="nav-label">Console</div><button data-tab="overview" data-icon="activity" aria-pressed="true">Overview</button><button data-tab="workers" data-icon="layers" aria-pressed="false">Workers</button><button data-tab="zones" data-icon="grid" aria-pressed="false">Zones</button><button data-tab="timeline" data-icon="timeline" aria-pressed="false">Timeline</button><button data-tab="queue" data-icon="cpu" aria-pressed="false">Dispatch</button><button data-tab="resources" data-icon="gauge" aria-pressed="false">Resources</button><button data-tab="activity" data-icon="list" aria-pressed="false">Activity</button><div class="nav-foot" id="sidebar-workers">One executor per file<br>Automatic task lanes</div></nav>
+  <nav aria-label="Console sections"><div class="nav-label">Console</div><button data-tab="overview" data-icon="activity" aria-pressed="true">Overview</button><button data-tab="highways" data-icon="route" aria-pressed="false">Highways</button><button data-tab="workers" data-icon="layers" aria-pressed="false">Workers</button><button data-tab="zones" data-icon="grid" aria-pressed="false">Canvas map</button><button data-tab="timeline" data-icon="timeline" aria-pressed="false">Timeline</button><button data-tab="queue" data-icon="cpu" aria-pressed="false">Dispatch</button><button data-tab="resources" data-icon="gauge" aria-pressed="false">Resources</button><button data-tab="activity" data-icon="list" aria-pressed="false">Activity</button><div class="nav-foot" id="sidebar-workers">One executor per file<br>Automatic task lanes</div></nav>
   <main>
     <details class="connection-settings"><summary>Connection settings</summary><p id="pairing-storage-note" class="muted">This computer reconnects automatically.</p><button id="forget">Forget this computer</button><small>Disconnects its open workers. Pair again next time.</small></details>
     <div id="alert" class="console-hero attention-panel" role="status" hidden></div>
     <div class="heading"><div><h2 id="section-title">Overview</h2><small id="identity">Waiting for worker identity</small></div><span class="tag" id="availability">Local worker</span></div>
     <div id="overview" class="panel">
       <div class="metrics"><div class="card metric" style="--accent:var(--chart-green)"><span class="metric-label" data-metric-icon="cpu">Running</span><strong id="active-count">-</strong><small id="worker-capacity">Across paired workers</small><div id="spark-active"></div></div><div class="card metric" style="--accent:var(--chart-blue)"><span class="metric-label" data-metric-icon="inbox">Admitted jobs</span><strong id="queue-count">-</strong><small>Active + waiting</small><div id="spark-jobs"></div></div><div class="card metric" style="--accent:var(--chart-orange)"><span class="metric-label" data-metric-icon="layers">Request data</span><strong id="queue-bytes">-</strong><small id="payload-budget">MiB / coordinator budget</small><div id="spark-bytes"></div></div><div class="card metric" style="--accent:var(--chart-purple)"><span class="metric-label" data-metric-icon="gauge">Daemon RSS</span><strong id="overview-memory">-</strong><small>MiB / Node process</small><div id="spark-memory"></div></div></div>
-      <div id="visual-overview" class="visual-stack"><div id="overview-threads" class="thread-chips"></div><div id="overview-timeline"></div><div class="visual-columns"><div><div class="group-title">Workers &amp; task lanes<small>Serial per file</small></div><div id="overview-workers"></div></div><div><div class="group-title">Reserved canvas<small>Page coordinates</small></div><div class="card map-card"><div class="map-toolbar"><label for="zone-page">Page</label><select id="zone-page" aria-label="Overview reservation page"></select></div><div id="overview-zones"></div></div></div></div></div>
+      <div id="visual-overview" class="visual-stack"><div id="overview-threads" class="thread-chips"></div><div><div class="group-title">Highways<small>One private port per agent</small></div><div id="overview-highways"></div></div><div id="overview-timeline"></div><div class="visual-columns"><div><div class="group-title">Workers &amp; task lanes<small>Serial per file</small></div><div id="overview-workers"></div></div><div><div class="group-title">Canvas map<small>Who is reading or writing where</small></div><div class="card map-card"><div class="map-toolbar"><label for="zone-page">File</label><select id="zone-page" aria-label="Overview canvas map file"></select></div><div id="overview-zones"></div></div></div></div></div>
     </div>
     <section id="workers" class="panel" hidden><div id="visual-workers"></div><div class="group-title">This plugin / local detail</div>
       <div class="grid"><div class="stack"><section class="card"><div class="card-head"><h3>Current job</h3><span class="source">Plugin snapshot</span></div><div id="job"></div><div class="actions"><button id="cancel" class="danger" disabled>Cancel job</button><small id="cancel-note">No active job</small></div></section><section class="card"><div class="card-head"><h3>This worker</h3><span class="source">Sandbox</span></div><div id="worker"></div></section></div><div class="stack"><section class="card"><div class="card-head"><h3>Up next</h3><span class="source">Coordinator queue</span></div><div id="next"></div></section><section class="card"><div class="card-head"><h3>Recent outcomes</h3><span class="source">This UI session</span></div><div id="recent"></div></section></div></div>
         </section>
-    <section id="zones" class="panel" hidden><div class="card map-card"><div class="map-toolbar"><label for="zone-page-full">Page</label><select id="zone-page-full" aria-label="Reservation page"></select></div><div id="visual-zones"></div></div></section>
-    <section id="timeline" class="panel" hidden><div id="visual-timeline"></div><p class="telemetry-note">Execution intervals from dispatch to outcome. The visible window is the last 60 seconds; no estimated render time.</p></section>
+    <section id="highways" class="panel" hidden><div id="highway-summary"></div><div class="group-title">Open highways<small>Each has its own queue, holds and outbox</small></div><div id="highway-list"></div><div class="group-title" style="margin-top:16px">Lobby<small>Openings, drops, resumes and closings</small></div><div id="lobby-log" class="card"></div><p class="telemetry-note">Agents ask the lobby (this daemon's main port) for a highway into one file. Highways into different files run in parallel; highways into the same file take turns on its one plugin thread every 100 nodes.</p></section>
+    <section id="zones" class="panel" hidden><div class="card map-card"><div class="map-toolbar"><label for="zone-page-full">File</label><select id="zone-page-full" aria-label="Canvas map file"></select></div><div id="visual-zones"></div></div></section>
+    <section id="timeline" class="panel" hidden><div id="visual-timeline"></div><p class="telemetry-note">Execution intervals from dispatch to outcome, including reads and snapshots. The visible window is the last 60 seconds; no estimated render time.</p></section>
     <section id="queue" class="panel" hidden><div id="dispatch-summary"></div><div class="group-title">File workers <small>Fair turns · FIFO within a lane</small></div><div id="queue-list" class="dispatch-board"></div><p class="telemetry-note">Each incoming batch gets a lane automatically. Commands inside a batch stay ordered. Lanes in one file take turns; separate files run concurrently.</p></section>
     <section id="resources" class="panel" hidden><div id="visual-resources" class="resource-tiles"></div><div class="grid"><div class="card"><div class="card-head"><h3>Observed in this worker</h3><span class="source">Sandbox</span></div><div id="resource-values"></div><p class="foot">Queue bytes describe waiting request payloads. They do not measure Figma memory.</p></div><div class="card"><h3>Memory and performance</h3><div class="line"><span>Plugin heap</span><span>Not exposed</span></div><div class="line"><span>Figma process memory</span><span>Not connected</span></div><div id="daemon-resources"></div><div class="line"><span>Pages resident in memory</span><span>Unknown</span></div><p class="foot">Process memory cannot be used as a percentage of Figma’s document heap. CPU, GPU render time and ETA are not measured by this console.</p></div></div></section>
-    <section id="activity" class="panel" hidden><div id="activity-summary"></div><div class="activity-toolbar"><h3>Outcome stream</h3><label>Show <select id="filter"><option value="all">All outcomes</option><option value="issues">Issues</option></select></label></div><div class="activity-legend"><span style="--accent:var(--chart-purple)"><i></i>Queue wait</span><span style="--accent:var(--chart-blue)"><i></i>Execution</span><span>Widths show each request’s measured time split</span></div><div id="activity-list" class="activity-stream"></div><p class="telemetry-note">Last 20 coordinator outcomes in this daemon session. Local replies appear when coordinator telemetry is unavailable. Admission rejections are returned to their caller and are not included in this stream.</p></section>
+    <section id="activity" class="panel" hidden><div id="activity-summary"></div><div class="activity-toolbar"><h3>Outcome stream</h3><label>Show <select id="filter"><option value="all">All outcomes</option><option value="changes">Canvas changes</option><option value="reads">Reads &amp; snapshots</option><option value="issues">Issues</option></select></label></div><div class="activity-legend"><span style="--accent:var(--chart-purple)"><i></i>Queue wait</span><span style="--accent:var(--chart-blue)"><i></i>Execution</span><span>Widths show each request’s measured time split</span></div><div id="activity-list" class="activity-stream"></div><p class="telemetry-note">Last 50 coordinator outcomes in this daemon session, including reads, placement scans, exports and reconcile proofs. Each one says where it read or wrote and how much came back, never the contents. Local replies appear when coordinator telemetry is unavailable. Admission rejections are returned to their caller and are not included in this stream.</p></section>
     <footer class="foot" id="sample">Waiting for the first snapshot.</footer>
   </main>
 </div>
+<div id="close-dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="close-title" hidden><div id="close-card" class="dialog-card"></div></div>
+<div class="resize-grip" data-edge="n" aria-hidden="true"></div><div class="resize-grip" data-edge="s" aria-hidden="true"></div><div class="resize-grip" data-edge="e" aria-hidden="true"></div><div class="resize-grip" data-edge="w" aria-hidden="true"></div><div class="resize-grip" data-edge="nw" aria-hidden="true"></div><div class="resize-grip" data-edge="ne" aria-hidden="true"></div><div class="resize-grip" data-edge="sw" aria-hidden="true"></div><div class="resize-grip" data-edge="se" aria-hidden="true"></div>
 <script>
 // Presentation observes bridge messages; it never polls or retains command/result payloads.
 const el = id => document.getElementById(id);
 const preview = typeof location !== 'undefined' && ['127.0.0.1', 'localhost'].includes(location.hostname) && new URLSearchParams(location.search).get('preview') === '1';
-const model = { identity: {}, state: null, telemetry: null, history: [], sparks: new Map(), markup: new Map(), views: new Map(), zoneKey: '', events: [], jobs: new Map(), tab: 'overview', filter: 'all', sampled: null, cancelId: null, issue: '', transport: 'connecting' };
+const model = { identity: {}, state: null, telemetry: null, history: [], sparks: new Map(), markup: new Map(), views: new Map(), zoneKey: '', events: [], jobs: new Map(), tab: 'overview', filter: 'all', sampled: null, cancelId: null, issue: '', transport: 'connecting', sketches: new Map() };
+const DAEMON_PORT = 3456;
 const escapeText = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n = value => Number.isFinite(value) && value >= 0 ? value : 0;
 const sec = value => (n(value) / 1000).toFixed(1) + ' s';
@@ -281,7 +335,9 @@ const ICONS = {
   gauge:'<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>', list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v5h6M8 13h8M8 17h5"/>',
   inbox:'<path d="M3 12h5l2 3h4l2-3h5M6 4h12l3 8v8H3v-8Z"/>', info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
-  check:'<path d="m5 12 4 4L19 6"/>', warning:'<path d="m12 3 10 18H2Z M12 9v5m0 3h.01"/>', clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', shield:'<path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6Z m-5 10 3 3 5-6"/>'
+  check:'<path d="m5 12 4 4L19 6"/>', warning:'<path d="m12 3 10 18H2Z M12 9v5m0 3h.01"/>', clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', shield:'<path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6Z m-5 10 3 3 5-6"/>',
+  minimize:'<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M12 4v6m-3-3 3 3 3-3"/>', close:'<path d="M6 6l12 12M18 6 6 18"/>',
+  route:'<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/>', terminal:'<path d="m5 7 5 5-5 5M12 19h7"/>'
 };
 const icon = name => '<svg class="ic" aria-hidden="true" viewBox="0 0 24 24">' + (ICONS[name] || ICONS.activity) + '</svg>';
 const palette = ['chart-blue','chart-purple','chart-cyan','chart-green','chart-orange'];
@@ -306,7 +362,7 @@ function acceptTelemetry(t) {
   paintSoon(false);
 }
 function updateWorkerProgress(update) {
-  const t=model.telemetry,w=t?.workers.find(w=>w.workerId===update.workerId);
+  const t=model.telemetry,w=update.highwayId?(t?.highways||[]).find(h=>h.id===update.highwayId):t?.workers.find(w=>w.workerId===update.workerId);
   if(!w?.current||w.current.requestId!==update.requestId||w.current.wireId!==update.wireId||w.sessionEpoch!==update.sessionEpoch)return;
   const p=update.progress;
   if(!p||!Number.isFinite(p.done)||!Number.isFinite(p.total)||p.done<0||p.total<0)return;
@@ -319,13 +375,13 @@ function updateWorkerProgress(update) {
 function timelineNow(t) { return t.sampledAt+Math.floor(Math.max(0,Date.now()-model.telemetryReceivedAt)/1000)*1000; }
 function paintTimeline(t) {
   const id=model.tab==='overview'?'overview-timeline':'visual-timeline',now=timelineNow(t);
-  view(id,[now,t.sampledAt,t.workers,t.recent],()=>executionTimeline(t,now));
+  view(id,[now,t.sampledAt,t.workers,t.timeline||t.recent],()=>executionTimeline(t,now));
 }
 function syncTimeline() {
-  const t=model.telemetry,visible=!document.hidden&&!disposed&&document.body.dataset.mode!=='compact'&&['overview','timeline'].includes(model.tab);
-  const active=visible&&t&&(t.workers.some(w=>w.current)||(t.recent||[]).some(e=>e.completedAt>=timelineNow(t)-60000));
+  const t=model.telemetry,visible=!document.hidden&&!disposed&&!['compact','stealth'].includes(document.body.dataset.mode)&&['overview','timeline'].includes(model.tab);
+  const active=visible&&t&&(t.workers.some(w=>w.current)||timelineEvents(t).some(e=>e.end>=timelineNow(t)-60000));
   if(!active) {clearTimeout(timelineTimer);timelineTimer=null;return;}
-  if(timelineTimer===null)timelineTimer=setTimeout(()=>{timelineTimer=null;if(model.telemetry&&!document.hidden&&['overview','timeline'].includes(model.tab)&&document.body.dataset.mode!=='compact')paintTimeline(model.telemetry);syncTimeline();},1000);
+  if(timelineTimer===null)timelineTimer=setTimeout(()=>{timelineTimer=null;if(model.telemetry&&!document.hidden&&['overview','timeline'].includes(model.tab)&&!['compact','stealth'].includes(document.body.dataset.mode))paintTimeline(model.telemetry);syncTimeline();},1000);
 }
 function spark(field, accent, max) {
   const values = model.history.map(h=>h[field]).filter(Number.isFinite);
@@ -384,7 +440,7 @@ function orbit(segments, value, label, accessible) {
   return '<div class="orbit" role="img" aria-label="'+escapeText(accessible)+'"><svg viewBox="0 0 112 112" aria-hidden="true"><circle class="ring-track" cx="56" cy="56" r="45"/>'+segments.map(([amount,accent])=>{const start=offset;offset+=amount;return '<circle class="ring-segment" cx="56" cy="56" r="45" pathLength="100" stroke="'+accent+'" stroke-dasharray="'+amount+' '+(100-amount)+'" stroke-dashoffset="'+(-start)+'"/>';}).join('')+'</svg><div class="orbit-value"><b>'+escapeText(value)+'</b><small>'+escapeText(label)+'</small></div></div>';
 }
 function dispatchSummary(t) {
-  const running=t.workers.filter(w=>w.current).length, waiting=(t.lanes||[]).filter(j=>j.state==='queued').length, committed=(t.reservations||[]).filter(z=>z.state==='committed').length;
+  const running=t.workers.filter(w=>w.current).length, waiting=(t.lanes||[]).filter(j=>j.state==='queued').length, committed=(t.reservations||[]).filter(z=>z.state==='committed').length+(t.earlierCommitted||[]).reduce((s,e)=>s+n(e.count),0);
   return '<div class="console-hero"><div><div class="eyebrow">'+icon('cpu')+'Coordinator / live dispatch</div><h3>'+ (running?running+' worker'+(running===1?'':'s')+' executing':'Ready for the next job')+'</h3><p>Incoming batches get lanes automatically. Each file executes one lane at a time.</p><div class="hero-chips"><span><b>'+t.workers.filter(w=>w.connected).length+'</b>connected</span><span><b>'+mib(t.budgets.bytes)+' MiB</b>admitted data</span><span><b>'+n(t.held)+'</b>held</span></div></div>'+orbit([[percent(t.budgets.jobs,t.budgets.maxJobs),'var(--hero-accent)']],t.budgets.jobs+'/'+t.budgets.maxJobs,'admitted jobs',t.budgets.jobs+' of '+t.budgets.maxJobs+' coordinator job slots admitted')+'</div><div class="dispatch-stages">'+[
     ['clock','Waiting',waiting,'Queued for a worker turn','chart-purple'],['activity','Executing',running,'One writer per file','chart-blue'],['shield','Committed zones',committed,(t.omittedReservations?'Visible reservations only':'Protected after completion'),'chart-green']].map(([glyph,title,value,detail,accent])=>'<div class="stage-card" style="--accent:var(--'+accent+')"><span>'+icon(glyph)+title+'</span><b>'+value+'</b><small>'+detail+'</small></div>').join('')+'</div>';
 }
@@ -401,12 +457,21 @@ function activitySummary(items, t) {
   const segments=[[percent(ok,items.length),'var(--hero-ok)'],[percent(issues,items.length),'var(--hero-issue)'],[percent(uncertain,items.length),'var(--hero-uncertain)']];
   return '<div class="console-hero activity-hero"><div><div class="eyebrow">'+icon('activity')+'Observed outcomes</div><h3>'+ (items.length?'Every job leaves a trace.':'Waiting for the first outcome')+'</h3><p>'+(t?'Queue time, execution time and geometry checks from the coordinator.':'Local plugin replies. Timing is shown only when available.')+'</p><div class="hero-chips"><span><b>'+ok+'</b>succeeded</span><span><b>'+issues+'</b>stopped / failed</span><span><b>'+uncertain+'</b>uncertain / partial</span></div></div>'+orbit(segments,items.length,'recent outcomes',ok+' succeeded, '+issues+' stopped or failed, '+uncertain+' uncertain or partial')+'</div>';
 }
+const bytesText=v=>!Number.isFinite(v)?'':v>=1048576?(v/1048576).toFixed(1)+' MB':v>=1024?Math.round(v/1024)+' KB':v+' B';
+function itemsText(e) {
+  if(!Number.isFinite(e.items))return '';
+  const [noun,tail]=e.op==='batch'?['command','']:e.op==='create'?['root','']:e.op==='layoutInfo'?['frame',' scanned']:['result',''];
+  return e.items.toLocaleString()+' '+noun+(e.items===1?'':'s')+tail;
+}
+const FILTERS={all:()=>true,issues:e=>e.outcome!=='succeeded',reads:e=>isReadEvent(e),changes:e=>!isReadEvent(e)};
 function activityCards(items,t) {
-  const filtered=items.filter(e=>model.filter==='all'||e.outcome!=='succeeded');
+  const filtered=items.filter(FILTERS[model.filter]||FILTERS.all);
   const html=filtered.map(e=>{
     const ok=e.outcome==='succeeded', uncertain=['uncertain','partial'].includes(e.outcome), accent=ok?'var(--chart-green)':uncertain?'var(--red)':'var(--orange)', timed=Number.isFinite(e.queueMs)&&Number.isFinite(e.executionMs), total=n(e.queueMs)+n(e.executionMs), perf=e.performance;
     const w=t?.workers.find(w=>w.workerId===e.workerId);
-    return '<article data-key="'+escapeText(e.id)+'" class="activity-entry entry-new '+(uncertain?'is-uncertain':'')+'" style="--accent:'+accent+'"><div class="event-symbol">'+icon(ok?'check':uncertain?'warning':'shield')+'</div><div class="event"><div class="event-title"><b>'+escapeText(e.laneId&&!e.laneId.startsWith('$')?e.laneId:e.op)+'</b><span class="state-pill">'+escapeText(e.outcome)+'</span></div><div class="event-context"><span>'+escapeText(e.op)+'</span>'+(e.category?'<span>'+escapeText({query:'Query',screenshot:'Screenshot / export',change:'Canvas change',batch:'Batch',control:'Control'}[e.category]||e.category)+'</span>':'')+(w?'<span>'+escapeText(w.file||w.fileKey||'Worker')+'</span>':'')+(e.pageId?'<span>Page '+escapeText(e.pageId)+'</span>':'')+(Number.isFinite(e.completedAt)?'<span>'+escapeText(new Date(e.completedAt).toLocaleTimeString())+'</span>':'')+'</div>'+(timed?'<div class="event-latency" role="img" aria-label="Queue '+sec(e.queueMs)+', execution '+sec(e.executionMs)+'"><i style="width:'+percent(e.queueMs,total)+'%"></i><i style="width:'+percent(e.executionMs,total)+'%"></i></div><div class="event-timings"><span>Queue <b>'+sec(e.queueMs)+'</b></span><span>Execution <b>'+sec(e.executionMs)+'</b></span><span>Total <b>'+sec(total)+'</b></span></div>':'<div class="reason">Timing unavailable for this local reply.</div>')+(perf&&Number.isFinite(perf.spatialMs)?'<div class="event-measure">Geometry <b>'+sec(perf.spatialMs)+'</b> · '+n(perf.spatialChecks)+' checks · '+n(perf.spatialNodes).toLocaleString()+' node visits · '+n(perf.yieldCount)+' yields</div>':'')+(e.kind||e.detail?'<p class="reason" style="margin-top:8px">'+escapeText(e.kind||e.detail)+'</p>':'')+'<div class="event-id">'+escapeText(e.id)+'</div></div></article>';
+    const where=e.target||{},page=where.page||(where.pageId||e.pageId?'Page '+(where.pageId||e.pageId):''),node=where.nodeId&&where.nodeId!==where.pageId?'Node '+where.nodeId:'';
+    const title=e.label||(e.laneId&&!e.laneId.startsWith('$')?e.laneId:e.op);
+    return '<article data-key="'+escapeText(e.id)+'" class="activity-entry entry-new '+(uncertain?'is-uncertain':'')+'" style="--accent:'+accent+'"><div class="event-symbol">'+icon(ok?'check':uncertain?'warning':'shield')+'</div><div class="event"><div class="event-title"><b>'+escapeText(title)+'</b><span class="state-pill">'+escapeText(e.outcome)+'</span></div><div class="event-context"><span>'+escapeText(e.op)+'</span>'+(e.category?'<span>'+escapeText({query:'Query / read',screenshot:'Screenshot / export',change:'Canvas change',batch:'Batch',control:'Control'}[e.category]||e.category)+'</span>':'')+(e.agentId&&e.agentId!=='automatic'?'<span>'+escapeText(e.agentId)+'</span>':'')+(w?'<span>'+escapeText(w.file||w.fileKey||'Worker')+'</span>':'')+(page?'<span>'+escapeText(page)+'</span>':'')+(node?'<span>'+escapeText(node)+'</span>':'')+(itemsText(e)?'<span>'+escapeText(itemsText(e))+'</span>':'')+(bytesText(e.responseBytes)?'<span>'+escapeText(bytesText(e.responseBytes))+' returned</span>':'')+(Number.isFinite(e.completedAt)?'<span>'+escapeText(new Date(e.completedAt).toLocaleTimeString())+'</span>':'')+'</div>'+(timed?'<div class="event-latency" role="img" aria-label="Queue '+sec(e.queueMs)+', execution '+sec(e.executionMs)+'"><i style="width:'+percent(e.queueMs,total)+'%"></i><i style="width:'+percent(e.executionMs,total)+'%"></i></div><div class="event-timings"><span>Queue <b>'+sec(e.queueMs)+'</b></span><span>Execution <b>'+sec(e.executionMs)+'</b></span><span>Total <b>'+sec(total)+'</b></span></div>':'<div class="reason">Timing unavailable for this local reply.</div>')+(perf&&Number.isFinite(perf.spatialMs)?'<div class="event-measure">Geometry <b>'+sec(perf.spatialMs)+'</b> · '+n(perf.spatialChecks)+' checks · '+n(perf.spatialNodes).toLocaleString()+' node visits · '+n(perf.yieldCount)+' yields</div>':'')+(e.kind||e.detail?'<p class="reason" style="margin-top:8px">'+escapeText(e.kind||e.detail)+'</p>':'')+'<div class="event-id">'+escapeText(e.id)+'</div></div></article>';
   }).join('');
   return html||'<div class="empty-illustration">'+icon('check')+'<span><b>'+(items.length?'No issues in these outcomes':'No outcomes yet')+'</b>'+(items.length?'Change the filter to see successful jobs.':'Completed requests will appear here.')+'</span></div>';
 }
@@ -416,6 +481,36 @@ function paintActivity(items,t) {
 }
 function visualBar(id, value, accent) {
   return '<div class="vbar" role="progressbar" aria-label="Measured create progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+value.toFixed(1)+'" style="--accent:'+accent+'"><i style="--value:'+(value/100)+'"></i></div>';
+}
+const highwayColor = h => color('highway/' + h.id);
+function highwayState(h) {
+  return h.quarantine ? 'Held · review' : h.state === 'closing' ? 'Closing' : h.agent === 'away' ? 'Agent away' : h.plugin === 'away' ? 'Figma end away'
+    : h.state === 'opening' ? 'Opening' : h.current ? 'Working' : 'Ready';
+}
+function highwayRows(t) {
+  const list = t.highways || [];
+  if (!list.length) return '<div class="empty-illustration">'+icon('route')+'<span><b>No highways open</b>Agents get a private port into a file when they connect through the lobby.</span></div>';
+  return '<div class="highway-list">'+list.map(h => {
+    const w = t.workers.find(w => w.fileKey === h.fileKey), c = h.current, p = c?.progress, measured = p?.total > 0, accent = h.quarantine ? 'var(--red)' : highwayColor(h);
+    const end = (state, glyph, name) => '<span class="end '+escapeText(state)+'" title="'+escapeText(name+': '+state)+'">'+icon(glyph)+escapeText(name)+'</span>';
+    return '<article data-key="'+escapeText(h.id)+'" class="highway-row'+(h.quarantine?' held':'')+'" style="--accent:'+accent+'"><div class="hw-who"><b>'+escapeText(h.agentId||'agent')+'</b><small>'+escapeText((w?.file||h.fileKey)+' · port '+h.port)+'</small></div>'
+      +'<div class="hw-job"><span>'+escapeText(c ? (c.label||c.op||'Working')+(measured?' · '+n(p.done).toLocaleString()+' / '+n(p.total).toLocaleString()+' nodes':'') : 'Idle')+'</span>'+(measured?visualBar('hw/'+h.id,percent(p.done,p.total),accent):'<small>'+escapeText(c?.target?.page?'On '+c.target.page:h.label||'')+'</small>')+'</div>'
+      +'<div class="hw-ends">'+end(h.agent,'terminal','agent')+end(h.plugin,'file','Figma')+'<span>'+n(h.queued)+' queued'+(h.outbox?' · '+n(h.outbox)+' waiting':'')+'</span></div>'
+      +'<span class="state-pill">'+escapeText(highwayState(h))+'</span></article>';
+  }).join('')+'</div>';
+}
+const LOBBY_EVENTS={opened:'Highway opened','agent-joined':'Agent connected','agent-away':'Agent dropped · results kept','agent-resumed':'Agent reconnected','plugin-joined':'Figma end connected','plugin-resumed':'Figma end reconnected',closing:'Closing',closed:'Highway closed'};
+function lobbyLog(t) {
+  const items=t.lobby||[];
+  if(!items.length)return '<p class="empty">Lobby events appear when agents open, drop, resume or close highways.</p>';
+  return '<div class="lobby-log">'+items.map(e=>{
+    const w=t.workers.find(w=>w.fileKey===e.fileKey);
+    return '<div data-key="'+escapeText(e.at+'/'+e.event+'/'+e.highwayId)+'" class="lobby-row"><span>'+escapeText(new Date(e.at).toLocaleTimeString())+'</span><b>'+escapeText(LOBBY_EVENTS[e.event]||e.event)+'</b><small>'+escapeText([e.agentId,w?.file||e.fileKey,e.port?'port '+e.port:'',Number.isFinite(e.delivered)&&e.delivered?e.delivered+' results delivered':'',e.reason].filter(Boolean).join(' · '))+'</small></div>';
+  }).join('')+'</div>';
+}
+function highwaySummary(t) {
+  const list=t.highways||[],working=list.filter(h=>h.current).length,away=list.filter(h=>h.agent==='away'||h.plugin==='away').length,held=list.filter(h=>h.quarantine).length;
+  return '<div class="console-hero"><div><div class="eyebrow">'+icon('route')+'Lobby · port '+DAEMON_PORT+'</div><h3>'+(list.length?list.length+' highway'+(list.length===1?'':'s')+' open':'No highways open')+'</h3><p>Each agent works on its own port with its own queue. A drop or a held outcome stays on that highway.</p><div class="hero-chips"><span><b>'+working+'</b>working</span><span><b>'+away+'</b>reconnecting</span><span><b>'+held+'</b>held</span></div></div>'+orbit([[percent(working,Math.max(1,list.length)),'var(--hero-accent)']],list.length,'highways',list.length+' highways open, '+working+' working')+'</div>';
 }
 function workerCards(t) {
   return t.workers.map((w,index)=>{
@@ -431,29 +526,115 @@ function workerCards(t) {
     return '<article data-key="'+escapeText(w.workerId)+'" class="worker-card"><div class="worker-head" style="--accent:'+color(w.fileKey)+'"><span class="worker-icon">'+icon('file')+'</span><div class="worker-title"><b>'+escapeText(w.file||w.fileKey||'Unattested file')+'</b><small>Worker '+(index+1)+' · '+escapeText(w.workerId.slice(0,8))+'</small></div><span class="state-pill" style="--accent:'+stateColor+'"><i class="live-dot '+(w.current&&!w.quarantine?'running':'')+'"></i>'+status+'</span></div>'+ (lanes||'<p class="empty" style="padding:12px">Lanes appear automatically when work arrives.</p>')+'<div class="worker-foot"><span>'+jobs.length+' admitted · '+mib(jobs.reduce((s,j)=>s+n(j.bytes),0))+' MiB</span><span>'+zones.length+' reservations</span></div></article>';
   }).join('') || '<p class="empty">Pair a worker to see its page lanes.</p>';
 }
+// Reads, snapshots and control calls share one row per file so fast fetches stay
+// visible next to the writers; each write lane keeps its own row.
+const READ_CATEGORIES=['query','screenshot','control'];
+const isReadEvent=e=>READ_CATEGORIES.includes(e.category);
+function timelineEvents(t) {
+  if(Array.isArray(t.timeline))return t.timeline;
+  return (t.recent||[]).filter(e=>Number.isFinite(e.completedAt)).map(e=>({...e,start:e.completedAt-n(e.executionMs),end:e.completedAt}));
+}
 function executionTimeline(t, end=t.sampledAt) {
   const start=end-60000, segments=[];
-  for (const e of t.recent||[]) if (Number.isFinite(e.executionMs)&&e.completedAt>=start) segments.push({workerId:e.workerId,laneId:e.laneId&&!e.laneId.startsWith('$')?e.laneId:e.op,start:e.completedAt-e.executionMs,end:e.completedAt,running:false});
-  for (const w of t.workers) if(w.current&&t.sampledAt>=start) segments.push({workerId:w.workerId,laneId:w.current.laneId,start:t.sampledAt-n(w.current.executionMs),end:t.sampledAt,running:true});
-  const keys=[...new Set(segments.map(s=>s.workerId+'/'+s.laneId))];
-  return '<div class="group-title">Execution timeline<small>Last 60 seconds · daemon</small></div><div class="card timeline-card">'+ (keys.map(k=>{
-    const items=segments.filter(s=>s.workerId+'/'+s.laneId===k), first=items[0], w=t.workers.find(w=>w.workerId===first.workerId), accent=color((w?.fileKey||first.workerId)+'/'+first.laneId);
-    return '<div data-key="'+escapeText(k)+'" class="time-row"><span title="'+escapeText(w?.file||first.workerId)+'">'+escapeText(first.laneId)+'</span><div class="time-track">'+items.map(s=>'<i class="'+(s.running?'running':'')+'" title="'+escapeText(first.laneId)+' · '+sec(s.end-s.start)+'" style="--accent:'+accent+';left:'+percent(Math.max(start,s.start)-start,60000)+'%;width:'+percent(s.end-Math.max(start,s.start),60000)+'%"></i>').join('')+'</div></div>';
-  }).join('')||'<p class="empty">Execution intervals appear as jobs run.</p>')+'<div class="time-axis"><span>−60 s</span><span>−30 s</span><span>now</span></div></div>';
+  // A highway gets one row for everything it does, so turn-taking on a shared file is visible.
+  const rowOf=e=>e.highwayId?'hw:'+e.highwayId:isReadEvent(e)?'$reads':String(e.laneId||e.label||e.op||'job');
+  for (const e of timelineEvents(t)) if (Number.isFinite(e.end)&&e.end>=start) segments.push({...e,row:rowOf(e),running:false});
+  for (const w of t.workers) if(w.current&&t.sampledAt>=start) segments.push({workerId:w.workerId,laneId:w.current.laneId,label:w.current.label,op:w.current.op,category:w.current.category,row:rowOf(w.current),start:t.sampledAt-n(w.current.executionMs),end:t.sampledAt,running:true});
+  for (const h of t.highways||[]) if(h.current&&t.sampledAt>=start) segments.push({workerId:h.workerId,highwayId:h.id,laneId:h.current.laneId,label:h.current.label,op:h.current.op,category:h.current.category,row:'hw:'+h.id,start:t.sampledAt-n(h.current.executionMs),end:t.sampledAt,running:true});
+  const workers=[...new Set(segments.map(s=>s.workerId))];
+  const rows=workers.map(id=>{
+    const w=t.workers.find(w=>w.workerId===id), mine=segments.filter(s=>s.workerId===id);
+    const keys=[...new Set(mine.map(s=>s.row))].sort((a,b)=>Number(a==='$reads')-Number(b==='$reads'));
+    return '<div data-key="file-'+escapeText(id)+'" class="time-file">'+escapeText(w?.file||w?.fileKey||'Worker '+id.slice(0,8))+'</div>'+keys.map(key=>{
+      const items=mine.filter(s=>s.row===key), reads=key==='$reads', road=key.startsWith('hw:')&&(t.highways||[]).find(h=>'hw:'+h.id===key), first=items[0];
+      const name=key.startsWith('hw:')?'Highway · '+(road?.agentId||'closed'):reads?'Reads · '+[...new Set(items.map(s=>s.op))].slice(-3).join(', '):first.label||(first.laneId&&!first.laneId.startsWith('$')?first.laneId:first.op);
+      const accent=road?highwayColor(road):color((w?.fileKey||id)+'/'+first.laneId);
+      return '<div data-key="'+escapeText(id+'/'+key)+'" class="time-row"><span title="'+escapeText(name)+'">'+escapeText(name)+'</span><div class="time-track">'+items.map(s=>'<i class="'+[s.running?'running':'',reads||(key.startsWith('hw:')&&isReadEvent(s))?'cat-'+s.category:'',['succeeded',undefined].includes(s.outcome)?'':'failed'].filter(Boolean).join(' ')+'" title="'+escapeText((s.label||s.op)+' · '+sec(s.end-s.start)+(s.outcome?' · '+s.outcome:''))+'" style="--accent:'+accent+';left:'+percent(Math.max(start,s.start)-start,60000)+'%;width:'+percent(s.end-Math.max(start,s.start),60000)+'%"></i>').join('')+'</div></div>';
+    }).join('');
+  }).join('');
+  return '<div class="group-title">Execution timeline<small>Last 60 seconds · daemon</small></div><div class="card timeline-card">'+(rows||'<p class="empty">Execution intervals appear as jobs run.</p>')+'<div class="time-axis"><span>−60 s</span><span>−30 s</span><span>now</span></div><div class="time-legend"><span style="--accent:var(--chart-blue)"><i></i>Canvas changes (lane color)</span><span style="--accent:var(--chart-cyan)"><i></i>Reads</span><span style="--accent:var(--chart-orange)"><i></i>Snapshots / exports</span><span style="--accent:var(--slate)"><i></i>Control</span></div></div>';
 }
-function zoneMap(zones, full=false) {
-  if (!zones.length) return '<p class="empty">A reserved page appears here after admission.</p>';
-  const minX=Math.min(...zones.map(z=>z.rect.x)), minY=Math.min(...zones.map(z=>z.rect.y)), maxX=Math.max(...zones.map(z=>z.rect.x+z.rect.width)), maxY=Math.max(...zones.map(z=>z.rect.y+z.rect.height));
-  const span=Math.max(maxX-minX,maxY-minY,1), pad=span*.07, font=span/30;
-  const svg='<svg class="canvas-map '+(full?'full':'')+'" role="img" aria-label="Page-space reservation map with measured root bounds" viewBox="'+[minX-pad,minY-pad,maxX-minX+pad*2,maxY-minY+pad*2].join(' ')+'">'+zones.map(z=>{
-    const accent=z.state==='held'?'var(--zone-held)':color(z.fileKey+'/'+z.laneId), r=z.rect;
-    return '<g data-key="'+escapeText(z.requestId)+'" style="color:'+accent+'"><rect class="zone-border '+(z.state==='running'?'zone-active':'')+'" x="'+r.x+'" y="'+r.y+'" width="'+r.width+'" height="'+r.height+'" rx="'+span*.012+'" fill="currentColor" fill-opacity=".06" stroke="currentColor"/><text x="'+(r.x+r.width*.04)+'" y="'+(r.y+r.height*.1)+'" fill="currentColor" font-size="'+Math.min(font,r.width/8,r.height/8)+'" font-weight="600">'+escapeText(z.laneId.slice(0,24))+'</text>'+(z.roots||[]).map(root=>{const b=root.rect;return '<rect x="'+b.x+'" y="'+b.y+'" width="'+b.width+'" height="'+b.height+'" rx="'+span*.004+'" fill="currentColor" fill-opacity=".35"><title>Measured created root</title></rect>';}).join('')+'</g>';
-  }).join('')+'</svg>';
-  return svg+'<div class="map-legend">'+zones.map(z=>'<div class="legend-row" style="--accent:'+color(z.fileKey+'/'+z.laneId)+'"><i></i><span><b>'+escapeText(z.laneId)+'</b><small>'+escapeText(z.state)+' · gutter '+n(z.gutter)+' px</small></span><em>'+n(z.nodeCount)+' roots'+(z.omittedRoots?' · '+n(z.omittedRoots)+' not drawn':'')+'<small>'+z.rect.width+' × '+z.rect.height+'</small></em></div>').join('')+'</div><p class="telemetry-note">'+icon('info')+'<span>Outlined bounds are reservations. Solid shapes are measured committed roots; a running outline does not estimate completed artwork.</span></p>';
+// The map is per file, then per page. Zones are exact page rectangles; the gray
+// artwork sketch is coarse (top-level frames only); a write without a zone shows
+// the frame it targets, or the whole page when it targets the page itself.
+const MAP_FADE_MS=120000, TARGET_KIND={write:'Writing · no zone',read:'Reading',snapshot:'Snapshot / export',navigation:'Opening page'};
+const fixed=v=>Math.round(v*10)/10;
+const bit=(hex,i)=>(parseInt(hex[i>>2],16)>>(3-(i&3)))&1;
+function mapModel(t) {
+  const files=new Map(), reservations=t.reservations||[];
+  const page=(fileKey,pageId,name)=>{
+    if(!files.has(fileKey))files.set(fileKey,new Map());
+    const pages=files.get(fileKey);
+    if(!pages.has(pageId))pages.set(pageId,{fileKey,pageId,name:name||null,zones:[],targets:[],sketch:null,visible:false});
+    const p=pages.get(pageId);if(name&&!p.name)p.name=name;return p;
+  };
+  for(const w of t.workers)if(w.fileKey&&w.connected) {
+    if(w.pageId)Object.assign(page(w.fileKey,w.pageId,w.page),{visible:true});
+    const c=w.current,target=c?.target;
+    if(c&&target&&!reservations.some(z=>z.requestId===c.requestId))page(w.fileKey,target.pageId,target.page).targets.push({...target,worker:w,job:c});
+  }
+  for(const h of t.highways||[]) {
+    const c=h.current,target=c?.target;
+    if(c&&target&&!reservations.some(z=>z.requestId===c.requestId))page(h.fileKey,target.pageId,target.page).targets.push({...target,worker:{fileKey:h.fileKey},job:{...c,agentId:c.agentId||h.agentId}});
+  }
+  for(const z of reservations)page(z.fileKey,z.pageId).zones.push(z);
+  const local=t.workers.find(w=>w.workerId===workerId||model.identity.fileKey&&w.fileKey===model.identity.fileKey);
+  const sketches=[...(t.sketches||[]),...(local?[...model.sketches.values()].map(s=>({...s,fileKey:local.fileKey})):[])];
+  for(const s of sketches) { const p=files.get(s.fileKey)?.get(s.pageId); if(p&&(!p.sketch||s.measuredAt>p.sketch.measuredAt)){p.sketch=s;if(!p.name)p.name=s.page;} }
+  return files;
+}
+function sketchPath(s) {
+  if(!s?.extent||!s.cells)return '';
+  const e=s.extent,cw=e.width/s.cols,ch=e.height/s.rows;let d='';
+  for(let r=0;r<s.rows;r++)for(let c=0,run=-1;c<=s.cols;c++) {
+    const on=c<s.cols&&bit(s.cells,r*s.cols+c);
+    if(on&&run<0)run=c;
+    if(!on&&run>=0) { d+='M'+fixed(e.x+run*cw)+' '+fixed(e.y+r*ch)+'h'+fixed((c-run)*cw)+'v'+fixed(ch)+'h'+fixed(-(c-run)*cw)+'z';run=-1; }
+  }
+  return d;
+}
+function zoneProgress(z,t) { const w=[...t.workers,...(t.highways||[])].find(w=>w.current?.requestId===z.requestId);return w?.current?.progress?.total>0?w.current.progress:null; }
+function pageTile(p,t,full) {
+  const boxes=[...p.zones.map(z=>z.rect),...p.targets.map(x=>x.bounds).filter(Boolean),...(p.sketch?.extent?[p.sketch.extent]:[])];
+  let vb=[0,0,1000,620];
+  if(boxes.length) {
+    const x0=Math.min(...boxes.map(b=>b.x)),y0=Math.min(...boxes.map(b=>b.y)),x1=Math.max(...boxes.map(b=>b.x+b.width)),y1=Math.max(...boxes.map(b=>b.y+b.height));
+    const w=Math.max(x1-x0,1),h=Math.max(y1-y0,1),pad=Math.max(w,h)*.06;vb=[x0-pad,y0-pad,w+pad*2,h+pad*2];
+  }
+  const span=Math.max(vb[2],vb[3]),font=span/22,label=(text,r)=>'<text x="'+fixed(r.x+Math.min(r.width,span)*.03)+'" y="'+fixed(r.y+Math.min(font,r.height*.3)*1.1)+'" fill="currentColor" font-size="'+fixed(Math.max(span/80,Math.min(font,r.width/9,r.height/3)))+'" font-weight="600">'+escapeText(String(text).slice(0,28))+'</text>';
+  const zones=p.zones.map(z=>{
+    const r=z.rect,age=z.state==='committed'&&Number.isFinite(z.completedAt)?Math.max(0,t.sampledAt-z.completedAt):0;
+    const fade=z.state==='committed'?Math.max(.3,Math.round((1-age/MAP_FADE_MS)*10)/10):1,progress=zoneProgress(z,t);
+    const accent=z.state==='held'?'var(--zone-held)':color(z.fileKey+'/'+z.laneId);
+    const bar=progress?'<rect x="'+fixed(r.x)+'" y="'+fixed(r.y+r.height-r.height*.04)+'" width="'+fixed(r.width*percent(progress.done,progress.total)/100)+'" height="'+fixed(r.height*.04)+'" fill="currentColor"/>':'';
+    return '<g data-key="'+escapeText(z.requestId)+'" style="color:'+accent+';opacity:'+fade+'"><rect class="zone-border'+(z.state==='running'?' zone-active':z.state==='reserved'?' zone-waiting':'')+'" x="'+fixed(r.x)+'" y="'+fixed(r.y)+'" width="'+fixed(r.width)+'" height="'+fixed(r.height)+'" rx="'+fixed(span*.01)+'" fill="currentColor" fill-opacity="'+(z.state==='held'?'.16':'.07')+'" stroke="currentColor"/>'+bar+label(z.agentId&&z.agentId!=='automatic'?z.agentId:z.label||z.laneId,r)+(z.roots||[]).map(root=>{const b=root.rect;return '<rect x="'+fixed(b.x)+'" y="'+fixed(b.y)+'" width="'+fixed(b.width)+'" height="'+fixed(b.height)+'" rx="'+fixed(span*.004)+'" fill="currentColor" fill-opacity=".32"><title>Measured created root</title></rect>';}).join('')+'</g>';
+  }).join('');
+  const targets=p.targets.map(x=>{
+    const r=x.bounds||{x:vb[0]+span*.015,y:vb[1]+span*.015,width:vb[2]-span*.03,height:vb[3]-span*.03};
+    return '<g data-key="target-'+escapeText(x.job.requestId)+'" class="target '+escapeText(x.kind)+'" style="color:'+color(x.worker.fileKey+'/'+x.job.laneId)+'"><rect class="target-border" x="'+fixed(r.x)+'" y="'+fixed(r.y)+'" width="'+fixed(r.width)+'" height="'+fixed(r.height)+'" rx="'+fixed(span*.01)+'"/>'+label(x.job.agentId||x.job.label||x.job.op||'Request',r)+'</g>';
+  }).join('');
+  const sketch=p.sketch,path=sketchPath(sketch),idle=!path&&!zones&&!targets;
+  const svg='<svg class="canvas-map'+(full?' full':'')+(idle?' idle':'')+'" role="img" aria-label="'+escapeText((p.name||p.pageId)+': '+p.zones.length+' zones, '+p.targets.length+' requests without a zone')+'" viewBox="'+vb.map(fixed).join(' ')+'" preserveAspectRatio="xMidYMid meet">'+(path?'<path class="artwork" d="'+path+'"/>':'')+zones+targets+'</svg>';
+  const rows=[...p.zones.map(z=>{
+    const progress=zoneProgress(z,t);
+    return '<div data-key="'+escapeText(z.requestId)+'" class="legend-row" style="--accent:'+(z.state==='held'?'var(--zone-held)':color(z.fileKey+'/'+z.laneId))+'"><i></i><span><b>'+escapeText(z.label||z.laneId)+'</b><small>'+escapeText((z.agentId&&z.agentId!=='automatic'?z.agentId+' · ':'')+'Zone · '+z.state+(progress?' · '+n(progress.done).toLocaleString()+' / '+n(progress.total).toLocaleString()+' nodes':''))+'</small></span><em>'+n(z.nodeCount)+' roots'+(z.omittedRoots?' · '+n(z.omittedRoots)+' not drawn':'')+'<small>'+fixed(z.rect.width)+' × '+fixed(z.rect.height)+'</small></em></div>';
+  }),...p.targets.map(x=>'<div data-key="target-'+escapeText(x.job.requestId)+'" class="legend-row" style="--accent:'+color(x.worker.fileKey+'/'+x.job.laneId)+'"><i></i><span><b>'+escapeText(x.job.label||x.job.op||'Request')+'</b><small>'+escapeText((x.job.agentId?x.job.agentId+' · ':'')+(TARGET_KIND[x.kind]||'Working')+(x.bounds?' · node '+(x.nodeId||'?'):' · whole page'))+'</small></span><em>'+escapeText(x.job.op||'')+'<small>'+(x.bounds?fixed(x.bounds.width)+' × '+fixed(x.bounds.height):'')+'</small></em></div>')];
+  const note=!sketch?'No artwork sketch yet: it appears once this page is loaded in Figma.':sketch.cells===null?'Too many frames to sketch ('+n(sketch.roots).toLocaleString()+').':'Artwork sketch · '+n(sketch.roots).toLocaleString()+' top-level frames · measured '+new Date(sketch.measuredAt).toLocaleTimeString();
+  return '<div data-key="'+escapeText(p.pageId)+'" class="map-page"><h4><span>'+escapeText(p.name||'Page '+p.pageId)+'</span><small>'+(p.visible?'visible · ':'')+(p.zones.length+p.targets.length?(p.zones.length+p.targets.length)+' live':'idle')+'</small></h4>'+svg+(rows.length?'<div class="map-legend">'+rows.join('')+'</div>':'')+'<p class="map-note">'+escapeText(note)+'</p></div>';
+}
+function canvasMap(t,full=false) {
+  const files=mapModel(t),earlier=new Map((t.earlierCommitted||[]).map(e=>[e.fileKey,e.count]));
+  const shown=[...files].filter(([fileKey])=>!model.zoneKey||model.zoneKey===fileKey);
+  if(!shown.length)return '<p class="empty">Each connected file appears here with its visible page and live work.</p>';
+  return '<div class="map-files">'+shown.map(([fileKey,pages])=>{
+    const w=t.workers.find(w=>w.fileKey===fileKey),ordered=[...pages.values()].sort((a,b)=>(b.zones.length+b.targets.length)-(a.zones.length+a.targets.length)||Number(b.visible)-Number(a.visible));
+    const older=earlier.get(fileKey);
+    return '<section data-key="'+escapeText(fileKey)+'" class="map-file" style="--accent:'+color(fileKey)+'"><div class="map-file-head"><i></i><b>'+escapeText(w?.file||fileKey)+'</b><small>'+(w?.current?escapeText((w.current.agentId||w.current.label||w.current.op||'Working')+' has the turn'):'idle')+'</small></div><div class="map-pages'+(full?' full':'')+'">'+ordered.map(p=>pageTile(p,t,full)).join('')+'</div>'+(older?'<p class="map-note">'+older+' earlier committed zone'+(older===1?'':'s')+' still protect this file (not drawn; the frames are in the artwork sketch).</p>':'')+'</section>';
+  }).join('')+'</div>'+(full?'<p class="telemetry-note">'+icon('info')+'<span>Zones are exact page rectangles; solid shapes inside are measured created roots. Dashed outlines are waiting zones or requests without a zone. Gray artwork is a coarse sketch of top-level frames, not a render.</span></p>':'');
 }
 function paintVisuals(t) {
   const tab=model.tab, overview=tab==='overview', identities=t?.workers.map(w=>[w.workerId,w.fileKey,w.file]);
-  const visible={overview:['overview-workers','overview-zones','overview-timeline'],workers:['visual-workers'],zones:['visual-zones'],timeline:['visual-timeline'],resources:['visual-resources']}[tab]||[];
+  const visible={overview:['overview-workers','overview-zones','overview-timeline','overview-highways'],highways:['highway-list','lobby-log'],workers:['visual-workers'],zones:['visual-zones'],timeline:['visual-timeline'],resources:['visual-resources']}[tab]||[];
   if(!t) {
     for(const id of visible)markup(id,'<p class="empty">Pair a worker to see measured activity.</p>');
     if(overview) {
@@ -470,18 +651,24 @@ function paintVisuals(t) {
     text('overview-memory',t.resources?mib(t.resources.memory.rss):'—');
     for(const [id,field,accent,max] of [['active','active','var(--chart-green)',4],['jobs','jobs','var(--chart-blue)',32],['bytes','bytes','var(--chart-orange)',33554432],['memory','rss','var(--chart-purple)',null]])
       view('spark-'+id,model.history.map(h=>h[field]),()=>spark(field,accent,max));
-    view('overview-threads',t.workers.map(w=>[w.workerId,w.fileKey,w.quarantine,w.current?.laneId]),()=>t.workers.map((w,i)=>'<span data-key="'+escapeText(w.workerId)+'" class="thread-chip" style="--accent:'+color(w.fileKey)+'"><i></i>Worker '+(i+1)+' · '+escapeText(w.quarantine?'held':w.current?w.current.laneId+' has the turn':'ready')+'</span>').join(''));
+    view('overview-threads',[t.workers.map(w=>[w.workerId,w.fileKey,w.file,w.quarantine,w.current?.laneId]),(t.highways||[]).map(h=>[h.id,h.fileKey,!!h.current])],()=>t.workers.map((w,i)=>{
+      const roads=(t.highways||[]).filter(h=>h.fileKey===w.fileKey),busy=roads.filter(h=>h.current).length+(w.current?1:0);
+      return '<span data-key="'+escapeText(w.workerId)+'" class="thread-chip" style="--accent:'+color(w.fileKey)+'"><i></i>'+escapeText((w.file||'Worker '+(i+1))+' · '+(w.quarantine?'held':busy>1?busy+' sharing the thread':busy?'1 working':'ready')+(roads.length?' · '+roads.length+' highway'+(roads.length===1?'':'s'):''))+'</span>';
+    }).join(''));
   }
   if(overview||tab==='workers')view(overview?'overview-workers':'visual-workers',[t.workers,t.lanes,t.reservations,workerId],()=>workerCards(t));
+  if(overview||tab==='highways')view(overview?'overview-highways':'highway-list',[t.highways,identities],()=>highwayRows(t));
+  if(tab==='highways') { view('highway-summary',[t.highways],()=>highwaySummary(t)); view('lobby-log',[t.lobby,identities],()=>lobbyLog(t)); }
   if(overview||tab==='timeline')paintTimeline(t);
   if(overview||tab==='zones') {
-    const groups=new Map();for(const z of t.reservations||[]) {const k=z.fileKey+'/'+z.pageId;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(z);}
-    if(!groups.has(model.zoneKey))model.zoneKey=groups.keys().next().value||'';
+    const fileKeys=[...new Set([...t.workers.filter(w=>w.fileKey&&w.connected).map(w=>w.fileKey),...(t.reservations||[]).map(z=>z.fileKey)])];
+    if(model.zoneKey&&!fileKeys.includes(model.zoneKey))model.zoneKey='';
     const picker=overview?'zone-page':'zone-page-full';
-    view(picker,[identities,[...groups.keys()]],()=>[...groups].map(([k,z])=>'<option data-key="'+escapeText(k)+'" value="'+escapeText(k)+'">'+escapeText((t.workers.find(w=>w.fileKey===z[0].fileKey)?.file||z[0].fileKey)+' · '+z[0].pageId)+'</option>').join(''));
+    view(picker,[identities,fileKeys],()=>'<option data-key="" value="">All files</option>'+fileKeys.map(k=>'<option data-key="'+escapeText(k)+'" value="'+escapeText(k)+'">'+escapeText(t.workers.find(w=>w.fileKey===k)?.file||k)+'</option>').join(''));
     property(picker,'value',model.zoneKey);
-    const zones=groups.get(model.zoneKey)||[];
-    view(overview?'overview-zones':'visual-zones',[identities,zones,t.omittedReservations],()=>zoneMap(zones,!overview)+(!overview&&t.omittedReservations?'<p class="telemetry-note">'+n(t.omittedReservations)+' older reservations not drawn; all remain enforced.</p>':''));
+    const live=[...t.workers,...(t.highways||[])].map(w=>[w.workerId,w.id,w.fileKey,w.file,w.connected,w.pageId,w.page,w.current&&[w.current.requestId,w.current.laneId,w.current.label,w.current.agentId,w.current.op,w.current.progress,w.current.target]]);
+    const local=[...model.sketches.values()].map(s=>[s.pageId,s.measuredAt]);
+    view(overview?'overview-zones':'visual-zones',[live,t.reservations,t.sketches,local,t.earlierCommitted,t.omittedReservations,model.zoneKey,(t.reservations||[]).some(z=>z.state==='committed')?Math.floor(t.sampledAt/12000):0],()=>canvasMap(t,!overview)+(!overview&&t.omittedReservations?'<p class="telemetry-note">'+n(t.omittedReservations)+' more live zones not drawn; all remain enforced.</p>':''));
   }
   if(tab==='resources')view('visual-resources',[t.resources,t.budgets.bytes,model.history],()=>{
     if(!t.resources)return '<p class="empty">Waiting for a full resource snapshot.</p>';
@@ -510,7 +697,7 @@ function paintSoon(urgent=true) {
   if(delay)paintTimer=setTimeout(enqueue,delay);else enqueue();
 }
 function setMode(mode, notify = false) {
-  if (!['compact','standard','console'].includes(mode)) return;
+  if (!['stealth','compact','standard','console'].includes(mode)) return;
   const needsPaint=document.body.dataset.mode!==mode;
   if(needsPaint)document.body.dataset.mode=mode;property('mode','value',mode);
   if (notify) toMain({ type: 'ui-mode', mode });
@@ -556,7 +743,12 @@ function paintAttention() {
   property('alert','hidden',!(model.issue||held||local?.quarantine));
   if(el('alert').hidden) return;
   const uncertain=held||local?.quarantine||model.events.some(e=>e.outcome==='uncertain')||model.issue&&model.state?.current;
-  markup('alert','<div class="attention-body"><div class="eyebrow">'+icon('warning')+'Attention required</div><h3>'+(uncertain?'Outcome uncertain':'This worker needs attention')+'</h3><p>Review before retrying. '+escapeText(held?'Inspect the affected artwork and reconcile held areas before submitting it again.':model.issue||'This file is held pending review.')+'</p><div class="hero-chips"><span>'+icon('shield')+(held?'<b>'+held+'</b>held · reservations stay protected':'Changes need review')+'</span><span>No automatic retry</span></div><div class="attention-actions"><button data-open-panel="activity">Review outcomes →</button>'+(t?.reservations?.some(r=>r.state==='held')?'<button data-open-panel="zones">Inspect held zones</button>':'')+'</div></div><div class="attention-graphic">'+orbit([],held||'!',held?(held===1?'held area':'held areas'):'Review needed',held?held+' held; reservations remain protected':'Attention required; outcome needs review')+'</div>');
+  // Held items can be released by the operator after looking at the canvas: two
+  // clicks, never automatic. A held highway blocks only that highway.
+  const items=[...(t?.reservations||[]).filter(r=>r.state==='held').map(r=>({id:r.requestId,label:(r.agentId?r.agentId+' · ':'')+(r.label||r.laneId)+' · zone on page '+r.pageId})),
+    ...(t?.fileHolds||[]).map(h=>({id:h.requestId,label:(h.scope?'Highway hold':'File hold')+' · '+(h.label||h.requestId)}))].filter(i=>typeof i.id==='string').slice(0,6);
+  const releases=items.length?'<div class="held-list">'+items.map(i=>'<div data-key="'+escapeText(i.id)+'" class="held-item"><span title="'+escapeText(i.label)+'">'+escapeText(i.label)+'</span><button data-release="'+escapeText(i.id)+'">'+(model.releaseArmed===i.id?'Confirm: I checked it':'Release after review')+'</button></div>').join('')+'</div>'+(model.releaseNote?'<p>'+escapeText(model.releaseNote)+'</p>':''):'';
+  markup('alert','<div class="attention-body"><div class="eyebrow">'+icon('warning')+'Attention required</div><h3>'+(uncertain?'Outcome uncertain':'This worker needs attention')+'</h3><p>Review before retrying. '+escapeText(held?'Inspect the affected artwork, then reconcile or release each held item. Other files and highways keep working.':model.issue||'This file is held pending review.')+'</p><div class="hero-chips"><span>'+icon('shield')+(held?'<b>'+held+'</b>held · their areas stay protected':'Changes need review')+'</span><span>No automatic retry</span></div><div class="attention-actions"><button data-open-panel="activity">Review outcomes →</button>'+(t?.reservations?.some(r=>r.state==='held')?'<button data-open-panel="zones">Inspect held zones</button>':'')+'</div>'+releases+'</div><div class="attention-graphic">'+orbit([],held||'!',held?(held===1?'held area':'held areas'):'Review needed',held?held+' held; their areas remain protected':'Attention required; outcome needs review')+'</div>');
 }
 function queueHTML(items) {
   return items.length ? items.map(j => '<div class="event"><div class="event-title"><b>' + escapeText(j.op) + '</b><small>Wait ' + sec(j.waitMs) + '</small></div><div class="id">' + escapeText(j.id) + '</div><div class="reason">' + (j.parentId ? 'Parent reference ' + escapeText(j.parentId) : 'Target resolves at execution') + ' · ' + n(j.nodes) + ' create nodes · ' + mib(j.bytes) + ' MiB</div></div>').join('') : '<p class="empty">No waiting jobs.</p>';
@@ -564,8 +756,45 @@ function queueHTML(items) {
 function eventHTML(items) {
   return items.length ? items.map(e => '<div class="event"><div class="event-title"><b>' + escapeText(e.op) + '</b><span class="outcome ' + (e.outcome === 'uncertain' ? 'uncertain' : e.outcome !== 'succeeded' ? 'issue' : '') + '">' + escapeText(e.outcome) + '</span></div><div class="id">' + escapeText(e.id) + '</div><div class="reason">' + escapeText(e.detail || 'Reply received') + '</div></div>').join('') : '<p class="empty">No observed outcomes.</p>';
 }
+function stealthStatus() {
+  const t=model.telemetry,local=t?.workers.find(w=>w.workerId===workerId||model.identity.fileKey&&w.fileKey===model.identity.fileKey);
+  if(preview)return 'Preview';
+  if(model.issue||local?.quarantine)return 'Needs review';
+  if(model.transport==='connected')return model.state?.current?'Working':'Connected';
+  if(model.transport==='error')return 'Needs attention';
+  if(!credential&&!deviceCredential)return 'Connect this computer';
+  return stopped?'Disconnected':'Connecting';
+}
+function paintStealth() {
+  const status=stealthStatus();
+  text('stealth-text','figma CLI - '+status+' - '+DAEMON_PORT);
+  property('stealth-text','title',(model.identity.file?model.identity.file+' · ':'')+status);
+}
+// The window is this file's bridge; closing it disconnects every agent here.
+// Figma's own title-bar close cannot be intercepted, so this explains the cost first.
+function closeImpact() {
+  const t=model.telemetry,s=model.state,c=s?.current,file=model.identity.file||'this file';
+  const local=t?.workers.find(w=>w.workerId===workerId),running=local?.current||null;
+  const waiting=t?.lanes?t.lanes.filter(j=>j.workerId===workerId&&j.state==='queued').length:n(s?.queued),items=[];
+  if(c||running) {
+    const total=n(c?.total),done=Math.min(n(c?.done),total);
+    items.push('<b>'+escapeText(running?.label||running?.op||c?.op||'A job')+'</b> is running'+(total?' ('+done.toLocaleString()+' / '+total.toLocaleString()+' nodes)':'')+'. It stops at its next checkpoint and its new nodes are rolled back where possible; the outcome may need review.');
+  }
+  if(waiting)items.push('<b>'+waiting+' waiting job'+(waiting===1?'':'s')+'</b> return'+(waiting===1?'s':'')+' to '+(waiting===1?'its agent':'their agents')+' as not started.');
+  items.push('Agents can’t reach <b>'+escapeText(file)+'</b> until you run figma-cli-ultimate in this file again.');
+  return {live:!!(c||running||waiting),items};
+}
+function paintCloseDialog() {
+  const {live,items}=closeImpact();
+  property('close-card','className','dialog-card'+(live?' live':''));
+  markup('close-card','<div class="eyebrow">'+icon('warning')+(live?'Work is running in this file':'Closing the bridge')+'</div><h3 id="close-title">'+(live?'Keep the bridge open?':'Close figma-cli-ultimate?')+'</h3><p>This window is the bridge for this file. Closing it disconnects every agent working here.</p><ul>'+items.map(i=>'<li>'+i+'</li>').join('')+'</ul><div class="dialog-actions"><button class="keep" data-dialog="keep">Keep open</button><button data-dialog="minimize">Minimize to banner</button><button class="close-anyway" data-dialog="close">'+(live?'Close anyway':'Close')+'</button></div><p>Figma’s own close button on the title bar can’t ask first. Minimize to the banner to keep agents connected.</p>');
+}
+function openCloseDialog() { paintCloseDialog(); property('close-dialog','hidden',false); el('close-card').querySelector('.keep')?.focus(); }
+function dismissCloseDialog() { property('close-dialog','hidden',true); }
 function paint() {
   syncTimeline();
+  if(!el('close-dialog').hidden)paintCloseDialog();
+  if(document.body.dataset.mode==='stealth') { if(changed('stealth',[model.telemetry?.workers,model.state?.current?.id,model.identity.file,model.transport,model.issue,stopped,credential,deviceCredential]))paintStealth(); return; }
   if(document.body.dataset.mode==='compact') {
     if(changed('compact',[model.telemetry,model.state,model.identity,model.transport,model.issue,model.events,model.cancelId,stopped,credential,workerId]))paintCompact();
     return;
@@ -619,7 +848,7 @@ function paintCoordinator() {
     if(!r)return '<p class="empty">Waiting for a full resource snapshot.</p>';
     return row('Daemon RSS',mib(r.memory.rss)+' MiB')+row('JS heap used',mib(r.memory.heapUsed)+' MiB')+row('External memory',mib(r.memory.external)+' MiB')+row('Event-loop delay p99',Number.isFinite(r.eventLoopDelayMs.p99)?r.eventLoopDelayMs.p99.toFixed(1)+' ms':'Unknown')+row('Queue p95',latency?.count?sec(latency.queueP95Ms):'No samples')+row('Execution p95',latency?.count?sec(latency.executionP95Ms):'No samples')+row('Latency sample count',latency?.count||0)+'<p class="foot">Node process · all workers share these bytes. Event-loop delay: since daemon startup. Latency: last 50 requests in this daemon session; mixed operations, not GPU render time.</p>';
   });
-  if(tab==='activity')paintActivity((t.recent||[]).slice(0,20),t);
+  if(tab==='activity')paintActivity((t.recent||[]).slice(0,50),t);
 }
 function observe(msg) {
   if (msg.type === 'identity' || msg.type === 'status') {
@@ -653,8 +882,14 @@ function observe(msg) {
     if (model.cancelId === msg.id) model.cancelId = null;
     if (uncertain) model.issue = 'A request has an uncertain outcome. Inspect its affected nodes and reconcile bridge diagnostics before restarting or retrying.';
   }
+  if (msg.type === 'page-sketch' && typeof msg.pageId === 'string') {
+    // Local copy for this file's map; the daemon validates and shares it with other windows.
+    model.sketches.delete(msg.pageId);
+    model.sketches.set(msg.pageId, { pageId: msg.pageId, page: msg.page, roots: msg.roots, cols: msg.cols, rows: msg.rows, extent: msg.extent, cells: msg.cells, measuredAt: msg.measuredAt });
+    while (model.sketches.size > 12) model.sketches.delete(model.sketches.keys().next().value);
+  }
   while (model.jobs.size > 16) model.jobs.delete(model.jobs.keys().next().value);
-  paintSoon(!['status','progress'].includes(msg.type));
+  paintSoon(!['status','progress','page-sketch'].includes(msg.type));
 }
 // Keep transport fencing and watchdogs independent of rendering and visibility.
 let ws = null, generation = 0, reconnectTimer = null, connectTimer = null;
@@ -682,17 +917,17 @@ function connect(identity) {
   if (stopped || ws) return;
   if (!credential && !deviceCredential && !pairRequested && !el('pair-code').value) {
     setStatus('Connect this computer', 'connecting');
-    connectionMessage('Connect this computer', 'Connect once. Approve the matching confirmation number in the Insula window, then future connections are automatic.'); return;
+    connectionMessage('Connect this computer', 'Connect once. Approve the matching confirmation number in the figma-cli-ultimate window, then future connections are automatic.'); return;
   }
   if (identity.busy) { setStatus('Waiting for cancellation…', 'connecting'); schedule(); return; }
-  const socket = ws = new WebSocket('ws://127.0.0.1:3456/plugin');
+  const socket = ws = new WebSocket('ws://127.0.0.1:' + DAEMON_PORT + '/plugin');
   const session = ++generation;
   setStatus('Connecting…', 'connecting');
-  connectionMessage('Connecting…', 'Looking for the Insula companion on this computer.');
+  connectionMessage('Connecting…', 'Looking for the figma-cli-ultimate companion on this computer.');
   connectTimer = setTimeout(() => { if (ws === socket && socket.readyState !== WebSocket.OPEN) socket.close(); }, 5000);
   socket.onopen = () => {
     clearTimeout(connectTimer); if (ws !== socket) return socket.close();
-    connectTimer=setTimeout(()=>{if(ws===socket&&!paired&&!approvalPending)socket.close(1008,'No Insula handshake. Another Figma client may own port 3456. Start the Insula client and reopen this plugin.');},5000);
+    connectTimer=setTimeout(()=>{if(ws===socket&&!paired&&!approvalPending)socket.close(1008,'No figma-cli-ultimate handshake. Another Figma client may own port 3456. Start the companion and reopen this plugin.');},5000);
     send({ ...identity, type: pairRequested ? 'pair-request' : 'hello', credential, deviceCredential, remember: true, pairingCode: el('pair-code').value }); setStatus('Connecting…', 'connecting');
   };
   socket.onmessage = event => {
@@ -703,7 +938,7 @@ function connect(identity) {
         clearTimeout(connectTimer);approvalPending = true; pairRequested = false;
         el('connection-challenge').textContent = msg.challenge; el('connection-challenge').hidden = false;
         el('connect-computer').disabled = true;
-        connectionMessage('Approve this connection', 'Choose Yes in the Insula window only if its confirmation number matches this one.');
+        connectionMessage('Approve this connection', 'Choose Yes in the figma-cli-ultimate window only if its confirmation number matches this one.');
       } else if (msg.type === 'forgotten') { clearRememberedComputer(); }
       else if (msg.type === 'ready') {
         clearTimeout(connectTimer);
@@ -714,7 +949,10 @@ function connect(identity) {
         credential = msg.credential; workerId = msg.workerId; coordinatorEpoch = msg.coordinatorEpoch; paired = true;
         el('pair-code').value = ''; el('pairing').hidden = true; model.issue = '';
         toMain({ type: 'coordinator-ready', sessionEpoch: msg.sessionEpoch, coordinatorEpoch }); subscribe(); setStatus('Ready · ' + (identity.file || 'current file'), 'connected');
-      } else if (msg.type === 'telemetry' && paired && msg.schema === 1 && msg.coordinatorEpoch === coordinatorEpoch && (!model.telemetry || msg.sequence > model.telemetry.sequence)) { acceptTelemetry(msg); }
+      } else if (paired && msg.type === 'open-highway') openRoad(msg);
+      else if (msg.type === 'close-highway') closeRoad(msg.highwayId);
+      else if (msg.type === 'release-result') { model.releaseNote = msg.error ? 'Release refused: ' + String(msg.error).slice(0, 160) : 'Released after review.'; model.releaseArmed = null; paintSoon(); }
+      else if (msg.type === 'telemetry' && paired && msg.schema === 1 && msg.coordinatorEpoch === coordinatorEpoch && (!model.telemetry || msg.sequence > model.telemetry.sequence)) { acceptTelemetry(msg); }
       else if(msg.type==='worker-progress'&&paired&&msg.schema===1&&msg.coordinatorEpoch===coordinatorEpoch&&model.telemetry&&msg.sequence>model.telemetry.sequence) {updateWorkerProgress(msg);model.telemetry.sequence=msg.sequence;}
       else if (paired && ['cmd','cmd-batch','cancel'].includes(msg.action)) toMain({ ...msg, type: msg.action, session });
     }
@@ -725,8 +963,9 @@ function connect(identity) {
     if (ws !== socket) return;
     clearTimeout(connectTimer); ws = null; paired = false; model.telemetry = null;
       el('connect-computer').disabled = false; el('connection-challenge').hidden = true;
-    if (busy || model.state?.current) model.issue = 'Connection lost during a job. Cancellation was requested; wait for its outcome and inspect bridge diagnostics before retrying.';
-    toMain({ type: 'cancel', id: '*', reason: 'socket closed' });
+    if (busy || (model.state?.current && (model.state.current.channel || 'main') === 'main')) model.issue = 'Connection lost during a job. Cancellation was requested; wait for its outcome and inspect bridge diagnostics before retrying.';
+    // Only the control socket's own work stops; highways have their own sockets.
+    toMain({ type: 'cancel', id: '*', reason: 'socket closed', channel: 'main' });
     if (event.code === 4401) {
       stopped = false; pairRequested = false; approvalPending = false; clearRememberedComputer();
       el('pair-code').value = ''; setStatus('Connection needed', 'connecting');
@@ -740,7 +979,7 @@ function connect(identity) {
       connectionMessage('Connection needs attention', model.issue); el('connect-computer').textContent = 'Retry connection';
     } else {
       setStatus('Waiting for companion…', 'connecting');
-      connectionMessage('Waiting for the companion', 'Insula will reconnect automatically. If it stays offline, open Advanced pairing & setup below.'); schedule();
+      connectionMessage('Waiting for the companion', 'figma-cli-ultimate will reconnect automatically. If it stays offline, open Advanced pairing & setup below.'); schedule();
     }
   };
 }
@@ -765,13 +1004,72 @@ window.onmessage = event => {
     toMain({ type: 'yielded', k: msg.k }); return;
   }
   if (msg.type === 'yield-finished') { clearTimeout(yields.get(msg.k)); yields.delete(msg.k); return; }
+  // Highway traffic returns on its own socket and survives control-socket reconnects.
+  if (msg.highway) { if (['busy','progress','result','batch-result'].includes(msg.type)) { observe(msg); sendRoad(msg.highway, msg); } return; }
   if (msg.session != null && msg.session !== generation && !preview) return;
   if (msg.type === 'busy') {
     busy = msg.busy ? msg.id : null;
     if (ws && paired && !stopped) setStatus(busy ? 'Working · ' + msg.op : 'Ready · ' + (model.identity.file || 'current file'), 'connected');
   }
-  if (['busy','progress','result','batch-result','status'].includes(msg.type)) { observe(msg); send(msg); }
+  if (msg.type === 'status') for (const r of roads.values()) if (r.state === 'connected') { try { r.ws.send(JSON.stringify(msg)); } catch {} }
+  if (['busy','progress','result','batch-result','status','page-sketch'].includes(msg.type)) { observe(msg); send(msg); }
 };
+// Highways: one more socket per agent, opened only when the daemon announces it on
+// the paired control socket. A drop never cancels work here: finished results wait
+// in this window and go out when the same highway reconnects.
+const roads = new Map();
+function openRoad(m) {
+  if (typeof m.highwayId !== 'string' || !/^hw-[\w-]{1,124}$/.test(m.highwayId) || !Number.isInteger(m.port) || m.port < 1024 || m.port > 65535 || typeof m.ticket !== 'string' || m.ticket.length > 128) return;
+  let r = roads.get(m.highwayId);
+  if (!r) { if (roads.size >= 16) return; r = { id: m.highwayId, outbox: [], attempts: 0, busy: false, state: 'dialing', lostAt: null }; roads.set(r.id, r); }
+  Object.assign(r, { port: m.port, ticket: m.ticket, agentId: String(m.agentId || '').slice(0, 128), label: String(m.label || '').slice(0, 128) });
+  toMain({ type: 'highway-session', highwayId: r.id, sessionEpoch: typeof m.sessionEpoch === 'string' ? m.sessionEpoch : r.id });
+  if (!r.ws) dialRoad(r);
+  paintSoon();
+}
+function dialRoad(r) {
+  clearTimeout(r.timer);
+  if (disposed || !roads.has(r.id)) return;
+  const socket = r.ws = new WebSocket('ws://127.0.0.1:' + r.port + '/plugin');
+  socket.onopen = () => {
+    if (r.ws !== socket) return socket.close();
+    const i = model.identity;
+    socket.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket: r.ticket, protocol: i.protocol, build: i.build, file: i.file, page: i.page, pageId: i.pageId, fileKey: i.fileKey, instanceId: i.instanceId, busy: r.busy }));
+    for (const wire of r.outbox.splice(0)) socket.send(wire);
+    Object.assign(r, { attempts: 0, state: 'connected', lostAt: null }); paintSoon();
+  };
+  socket.onmessage = event => {
+    if (r.ws !== socket) return;
+    try {
+      const msg = JSON.parse(event.data);
+      if (['cmd','cmd-batch','cancel'].includes(msg.action)) toMain({ ...msg, type: msg.action, session: generation, highway: r.id });
+    } catch { socket.close(1008, 'Invalid highway message'); }
+  };
+  socket.onerror = () => socket.close();
+  socket.onclose = event => {
+    if (r.ws !== socket) return;
+    r.ws = null; r.state = 'away'; r.lostAt ??= Date.now();
+    // A refused ticket means the daemon closed this highway; give up after 90 s otherwise.
+    if (event.code === 4401 || !roads.has(r.id) || Date.now() - r.lostAt > 90000) { closeRoad(r.id); return; }
+    r.timer = setTimeout(() => dialRoad(r), Math.min(5000, 250 * 2 ** r.attempts++));
+    paintSoon();
+  };
+}
+function closeRoad(id) {
+  const r = roads.get(id); if (!r) return;
+  roads.delete(id); clearTimeout(r.timer);
+  toMain({ type: 'highway-closed', highwayId: id });
+  try { r.ws?.close(1000, 'Highway closed'); } catch {}
+  paintSoon();
+}
+function sendRoad(id, msg) {
+  const r = roads.get(id); if (!r) return;
+  if (msg.type === 'busy') r.busy = !!msg.busy;
+  const wire = JSON.stringify(msg);
+  if (r.state === 'connected' && r.ws?.readyState === WebSocket.OPEN) { try { r.ws.send(wire); return; } catch {} }
+  // Progress is transient; outcomes and start/finish marks must arrive.
+  if (['result','batch-result','busy'].includes(msg.type)) { r.outbox.push(wire); if (r.outbox.length > 64) r.outbox.shift(); }
+}
 el('mode').addEventListener('change', event => setMode(event.target.value, true));
 for(const id of ['ui-theme','compact-theme']) el(id).addEventListener('change', event => setTheme(event.target.value,true));
 for (const id of ['zone-page','zone-page-full']) el(id).addEventListener('change', event => { model.zoneKey=event.target.value; paintSoon(); });
@@ -785,7 +1083,49 @@ el('pair').addEventListener('click', () => { if (ws || !el('pair-code').value) r
 el('forget').addEventListener('click', () => {
   if (paired) send({ type: 'forget-computer' });
 });
-document.addEventListener('click', event => { const id = event.target?.getAttribute?.('data-cancel-request'); if (id && paired) send({ type: 'coordinator-cancel', requestId: id }); const panel=event.target?.getAttribute?.('data-open-panel'); if(panel==='activity'||panel==='zones')showPanel(panel); });
+document.addEventListener('click', event => {
+  const id = event.target?.getAttribute?.('data-cancel-request'); if (id && paired) send({ type: 'coordinator-cancel', requestId: id });
+  const panel=event.target?.getAttribute?.('data-open-panel'); if(panel==='activity'||panel==='zones')showPanel(panel);
+  const release=event.target?.getAttribute?.('data-release');
+  if(release&&paired) {
+    if(model.releaseArmed===release) { send({ type: 'release-hold', requestId: release }); model.releaseNote='Releasing…'; }
+    else { model.releaseArmed=release; model.releaseNote=''; }
+    paintSoon();
+  }
+  const control=event.target?.closest?.('[data-window],[data-dialog]'), windowAction=control?.dataset.window, choice=control?.dataset.dialog;
+  if(windowAction==='stealth')setMode('stealth',true);
+  if(windowAction==='close')openCloseDialog();
+  if(choice) dismissCloseDialog();
+  if(choice==='minimize')setMode('stealth',true);
+  if(choice==='close')toMain({ type: 'close-plugin' });
+});
+document.addEventListener('keydown', event => { if(event.key==='Escape'&&!el('close-dialog').hidden) { dismissCloseDialog(); event.preventDefault?.(); } });
+el('stealth-details').addEventListener('click', () => setMode('compact', true));
+// Edge and corner drags. Screen coordinates stay stable while the window itself
+// moves under the pointer; left/top drags shift the window by the size change.
+const SIZE_MIN=[300,200], SIZE_MAX=[2400,1800], clampSize=(v,i)=>Math.max(SIZE_MIN[i],Math.min(SIZE_MAX[i],Math.round(v)));
+const modeForSize=(w,h)=>w>=720?'console':h>=480?'standard':'compact';
+let drag=null, dragTimer=null;
+function applyDrag() {
+  dragTimer=null; if(!drag)return;
+  const d=drag,edge=d.edge,ex=d.px-d.x,ey=d.py-d.y;
+  const w=clampSize(d.w+(edge.includes('e')?ex:edge.includes('w')?-ex:0),0), h=clampSize(d.h+(edge.includes('s')?ey:edge.includes('n')?-ey:0),1);
+  const left=edge.includes('w')?d.w-w:0, top=edge.includes('n')?d.h-h:0, dx=left-d.left, dy=top-d.top, mode=modeForSize(w,h);
+  if(w===d.lastW&&h===d.lastH)return;
+  Object.assign(d,{left,top,lastW:w,lastH:h});
+  toMain({type:'ui-resize',width:w,height:h,dx,dy,mode});
+  if(document.body.dataset.mode!==mode) { document.body.dataset.mode=mode; property('mode','value',mode); subscribe(); paintSoon(); }
+}
+document.querySelectorAll('.resize-grip').forEach(grip => {
+  grip.addEventListener('pointerdown', event => {
+    if(event.button!==0||document.body.dataset.mode==='stealth')return;
+    grip.setPointerCapture?.(event.pointerId); event.preventDefault?.();
+    drag={edge:grip.dataset.edge,x:event.screenX,y:event.screenY,px:event.screenX,py:event.screenY,w:window.innerWidth||document.documentElement.clientWidth,h:window.innerHeight||document.documentElement.clientHeight,left:0,top:0};
+  });
+  grip.addEventListener('pointermove', event => { if(!drag)return; drag.px=event.screenX; drag.py=event.screenY; if(dragTimer===null)dragTimer=setTimeout(applyDrag,16); });
+  const end=event => { if(!drag)return; drag.px=event.screenX; drag.py=event.screenY; clearTimeout(dragTimer); applyDrag(); drag=null; };
+  grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+});
 el('details').addEventListener('click', () => { setMode(model.transport==='connected'?'console':'standard', true); if(model.compactAttention)showPanel('activity'); });
 el('cancel').addEventListener('click', () => {
   const c = model.state?.current; if (!c || el('cancel').disabled) return;
@@ -793,10 +1133,10 @@ el('cancel').addEventListener('click', () => {
 });
 function showPanel(tab) {
   model.tab = tab;
-  if(tab==='zones') { const held=model.telemetry?.reservations?.find(r=>r.state==='held'); if(held){model.zoneKey=held.fileKey+'/'+held.pageId;} }
+  if(tab==='zones') { const held=model.telemetry?.reservations?.find(r=>r.state==='held'); if(held){model.zoneKey=held.fileKey;} }
   document.querySelectorAll('[data-tab]').forEach(b => { const pressed=String(b.dataset.tab===tab);if(b.getAttribute('aria-pressed')!==pressed)b.setAttribute('aria-pressed',pressed); });
   document.querySelectorAll('.panel').forEach(p => property(p.id,'hidden',p.id!==model.tab));
-  text('section-title',{overview:'Overview',workers:'Workers',zones:'Zones',timeline:'Timeline',queue:'Dispatch',resources:'Resources',activity:'Activity'}[tab]); paintSoon();
+  text('section-title',{overview:'Overview',highways:'Highways',workers:'Workers',zones:'Canvas map',timeline:'Timeline',queue:'Dispatch',resources:'Resources',activity:'Activity'}[tab]); paintSoon();
 }
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => showPanel(button.dataset.tab)));
 el('filter').addEventListener('change', event => { model.filter = event.target.value; paintSoon(); });
@@ -806,6 +1146,7 @@ window.addEventListener('beforeunload', () => {
   yields.forEach(clearTimeout); yields.clear();
   stopPainting();
   toMain({ type: 'cancel', id: '*', reason: 'UI closing' }); if (ws) ws.close();
+  for (const r of roads.values()) { clearTimeout(r.timer); try { r.ws?.close(1001, 'Plugin closing'); } catch {} }
 });
 el('preview-label').hidden = !preview;
 el('pairing').hidden = preview;

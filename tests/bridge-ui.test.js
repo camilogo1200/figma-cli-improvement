@@ -334,7 +334,10 @@ test('identical telemetry performs zero DOM mutations; changing one worker prese
   assert.equal(all.takeRecords().length,0,'a sequence number alone never changes the DOM');
   ws.receive({...t,sequence:3,workers:t.workers.map((w,i)=>i?w:{...w,current:{...w.current,progress:{done:25,total:100}}})});
   const records=all.takeRecords();assert.ok(records.length>0);
-  assert.ok(records.every(r=>card.contains(r.target)),'only the changed worker receives DOM mutations');
+  // The worker's own zone on the canvas map shows the same measured progress.
+  const zoneParts=[...doc.querySelectorAll('#overview-zones [data-key="r1"]')];assert.equal(zoneParts.length,2,'zone shape and legend row');
+  assert.ok(records.every(r=>card.contains(r.target)||zoneParts.some(z=>z.contains(r.target))),'only the changed worker and its zone receive DOM mutations');
+  assert.ok(records.some(r=>zoneParts.some(z=>z.contains(r.target))),'the zone progress bar moved');
   assert.equal(doc.querySelector('#overview-workers [data-key="w1"]'),card);
   assert.equal(doc.querySelector('#overview-workers [data-key="w2"]'),other);
   assert.equal(doc.querySelector('#overview-zones svg'),zone);
@@ -460,4 +463,181 @@ test('an incompatible daemon cannot leave the UI waiting indefinitely for worker
   h.timers.delete(deadline[0]);deadline[1].fn();
   assert.equal(ws.readyState,3);assert.match(h.elements.get('status').textContent,/Another Figma client may own port 3456/);
   assert.equal(h.timers.size,0);h.window.beforeunload();
+});
+
+test('the stealth banner shows only product, status and port, and opens the details on demand',()=>{
+  const h=harness(),ws=h.connect();
+  h.main({type:'ui-mode',mode:'stealth'});
+  assert.equal(h.document.body.dataset.mode,'stealth');
+  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Connected - 3456');
+  assert.deepEqual([...h.elements.get('stealth').querySelectorAll('button')].map(b=>b.textContent),['Show details']);
+  h.main(snapshot());assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Working - 3456');
+  h.main({type:'batch-result',session:1,id:'job-1',outcome:'partial',results:[{success:false,outcome:'uncertain'}]});
+  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Needs review - 3456');
+  h.elements.get('stealth-details').click();
+  assert.equal(h.document.body.dataset.mode,'compact');assert.equal(h.messages.at(-1).type,'ui-mode');assert.equal(h.messages.at(-1).mode,'compact');
+  h.document.click({target:h.document.querySelector('#compact [data-window="stealth"]')});
+  assert.equal(h.document.body.dataset.mode,'stealth');assert.equal(h.messages.at(-1).mode,'stealth');
+  assert.equal(ws.sent.filter(m=>m.type==='subscribe').at(-1).mode,'stealth');
+  h.window.beforeunload();
+});
+
+test('closing asks first, explains the running and waiting work, and offers the banner instead',()=>{
+  const h=harness();h.connect();h.main(snapshot());
+  const click=selector=>h.document.click({target:h.document.querySelector(selector)});
+  click('.top [data-window="close"]');
+  const dialog=h.elements.get('close-dialog'),card=h.elements.get('close-card');
+  assert.equal(dialog.hidden,false);assert.match(card.className,/live/);
+  assert.match(card.textContent,/Keep the bridge open\?/);assert.match(card.textContent,/create is running \(100 \/ 300 nodes\)/);
+  assert.match(card.textContent,/1 waiting job returns to its agent as not started/);assert.match(card.textContent,/reach Example/);
+  assert.equal(h.document.activeElement,card.querySelector('.keep'));
+  click('[data-dialog="keep"]');assert.equal(dialog.hidden,true);assert.ok(!h.messages.some(m=>m.type==='close-plugin'));
+  click('.top [data-window="close"]');h.document.keydown({key:'Escape'});assert.equal(dialog.hidden,true);
+  click('.top [data-window="close"]');click('[data-dialog="minimize"]');
+  assert.equal(dialog.hidden,true);assert.equal(h.document.body.dataset.mode,'stealth');assert.ok(!h.messages.some(m=>m.type==='close-plugin'));
+  h.main({type:'ui-mode',mode:'compact'});h.main({type:'result',session:1,id:'job-1',outcome:'succeeded'});h.main({...snapshot(),current:null,queued:0});
+  click('#compact [data-window="close"]');
+  assert.doesNotMatch(card.className,/live/);assert.match(card.textContent,/Close figma-cli-ultimate\?/);
+  click('[data-dialog="close"]');assert.equal(h.messages.at(-1).type,'close-plugin');
+  h.window.beforeunload();
+});
+
+test('edges and corners resize the window, move it for left and top drags, and switch layouts by size',()=>{
+  const h=harness();h.connect();h.main({type:'ui-mode',mode:'compact'});
+  const drag=(edge,from,to)=>{
+    const grip=h.document.querySelector('.resize-grip[data-edge="'+edge+'"]');
+    const fire=(type,point)=>grip.dispatchEvent(new h.dom.window.MouseEvent(type,{button:0,screenX:point[0],screenY:point[1]}));
+    fire('pointerdown',from);fire('pointermove',to);fire('pointerup',to);
+  };
+  const plain=value=>JSON.parse(JSON.stringify(value));
+  Object.assign(h.window,{innerWidth:360,innerHeight:300});
+  drag('sw',[500,500],[400,750]);
+  assert.deepEqual(plain(h.messages.at(-1)),{type:'ui-resize',width:460,height:550,dx:-100,dy:0,mode:'standard'});
+  assert.equal(h.document.body.dataset.mode,'standard');assert.equal(h.elements.get('mode').value,'standard');
+  Object.assign(h.window,{innerWidth:460,innerHeight:550});
+  drag('ne',[0,0],[400,-100]);
+  assert.deepEqual(plain(h.messages.at(-1)),{type:'ui-resize',width:860,height:650,dx:0,dy:-100,mode:'console'});
+  Object.assign(h.window,{innerWidth:860,innerHeight:650});
+  drag('w',[0,0],[5000,0]);
+  assert.equal(h.messages.at(-1).width,300,'never below the minimum');assert.equal(h.messages.at(-1).dx,560,'the left edge stops at the minimum width');
+  h.main({type:'ui-mode',mode:'stealth'});const count=h.messages.length;
+  drag('se',[0,0],[300,300]);assert.equal(h.messages.length,count,'the banner does not resize');
+  assert.equal([...h.timers.values()].filter(t=>t.ms===16).length,0);
+  h.window.beforeunload();
+});
+
+test('the canvas map shows every connected file, live zones with progress, writes without a zone and coarse artwork',()=>{
+  const h=harness(),ws=h.connect();
+  const t={type:'telemetry',schema:1,sequence:1,coordinatorEpoch:'c1',sampledAt:200000,held:0,budgets:{jobs:2,maxJobs:32,bytes:0,maxBytes:33554432},lanes:[],recent:[],
+    workers:[{workerId:'w1',fileKey:'fileA',file:'Example',connected:true,pageId:'p1',page:'Home',current:{requestId:'r1',laneId:'auto-r1',label:'Checkout',agentId:'builder',op:'create',category:'change',progress:{done:5,total:10}}},
+      {workerId:'w2',fileKey:'fileB',file:'Other file',connected:true,pageId:'q1',page:'Board',current:{requestId:'r9',laneId:'batch-r9',label:'Batch 9',op:'batch',category:'batch',target:{pageId:'q2',page:'Onboarding',nodeId:'5:5',kind:'write',bounds:{x:10,y:10,width:50,height:50}}}}],
+    reservations:[{requestId:'r1',fileKey:'fileA',pageId:'p2',laneId:'auto-r1',agentId:'builder',label:'Checkout',state:'running',rect:{x:0,y:0,width:200,height:100}},
+      {requestId:'old',fileKey:'fileA',pageId:'p2',laneId:'live-alpha',agentId:'acceptance-alpha',state:'committed',completedAt:100000,rect:{x:300,y:0,width:100,height:100}}],
+    earlierCommitted:[{fileKey:'fileA',count:4}],
+    sketches:[{workerId:'w1',fileKey:'fileA',pageId:'p2',page:'Checkout page',roots:3,cols:4,rows:2,extent:{x:0,y:0,width:400,height:200},cells:'f0',measuredAt:9000}]};
+  ws.receive(t);
+  const map=()=>h.elements.get('overview-zones');
+  assert.match(map().textContent,/Example/);assert.match(map().textContent,/Other file/);
+  const page=map().querySelector('[data-key="p2"]');assert.match(page.textContent,/Checkout page/);
+  assert.match(page.textContent,/builder · Zone · running · 5 \/ 10 nodes/);assert.ok(page.querySelector('path.artwork'));
+  assert.match(page.querySelector('g[data-key="old"]').getAttribute('style'),/opacity:0.3/,'finished zones fade, then leave the map');
+  assert.match(map().textContent,/4 earlier committed zones still protect this file/);
+  const onboarding=map().querySelector('[data-key="q2"]');assert.match(onboarding.textContent,/Writing · no zone · node 5:5/);
+  assert.ok(onboarding.querySelector('g.target.write rect[x="10"]'));
+  assert.match(map().querySelector('[data-key="q1"]').textContent,/Board.*visible · idle/);
+  assert.match(map().querySelector('[data-key="p1"]').textContent,/No artwork sketch yet/);
+  h.main({type:'page-sketch',pageId:'p1',page:'Home',roots:2,cols:4,rows:2,extent:{x:0,y:0,width:100,height:100},cells:'ff',measuredAt:9500});
+  assert.equal(ws.sent.at(-1).type,'page-sketch','the local sketch is shared with the daemon');
+  assert.match(map().querySelector('[data-key="p1"]').textContent,/2 top-level frames/);
+  const picker=h.elements.get('zone-page');assert.deepEqual([...picker.options].map(o=>o.value),['','fileA','fileB']);
+  picker.change({target:{value:'fileB'}});assert.doesNotMatch(map().textContent,/Example/);assert.match(map().textContent,/Other file/);
+  h.window.beforeunload();
+});
+
+test('the plugin window dials each announced highway, routes its jobs, and keeps results across drops',()=>{
+  const h=harness(),control=h.connect();
+  h.main({type:'identity',protocol:4,build:'test',busy:false,page:'P',fileKey:'fileA',instanceId:'inst-1'});
+  control.receive({type:'open-highway',highwayId:'hw-1',sessionEpoch:'hw-1',port:51234,ticket:'t'.repeat(64),agentId:'builder'});
+  assert.deepEqual(h.messages.filter(m=>m.type==='highway-session').map(m=>[m.highwayId,m.sessionEpoch]),[['hw-1','hw-1']]);
+  const road=h.sockets.at(-1);assert.equal(road.url,'ws://127.0.0.1:51234/plugin');
+  road.open();
+  assert.deepEqual([road.sent[0].type,road.sent[0].ticket,road.sent[0].fileKey,road.sent[0].instanceId,road.sent[0].busy],['hello','t'.repeat(64),'fileA','inst-1',false]);
+  road.receive({action:'cmd',id:'job-1',cmd:{op:'find',name:'x'}});
+  assert.equal(h.messages.at(-1).type,'cmd');assert.equal(h.messages.at(-1).highway,'hw-1');
+  const controlSent=control.sent.length;
+  h.main({type:'busy',busy:true,id:'job-1',op:'find',highway:'hw-1'});
+  road.close(1006,'');
+  // The job keeps running; its outcome waits in this window for the reconnect.
+  assert.ok(!h.messages.some(m=>m.type==='cancel'&&m.channel!=='main'),'a highway drop cancels nothing');
+  h.main({type:'result',id:'job-1',result:[],highway:'hw-1',session:99});
+  assert.equal(control.sent.length,controlSent,'highway traffic never goes to the control socket');
+  const retry=[...h.timers.entries()].find(([,t])=>t.ms===250);assert.ok(retry,'reconnect is scheduled');
+  h.timers.delete(retry[0]);retry[1].fn();
+  const again=h.sockets.at(-1);assert.notEqual(again,road);again.open();
+  assert.equal(again.sent[0].type,'hello');assert.equal(again.sent[0].busy,true,'it says it may still be busy so the daemon resumes');
+  assert.deepEqual(again.sent.slice(1).map(m=>[m.type,m.id]),[['result','job-1']]);
+  control.close(1006,'');
+  assert.deepEqual(h.messages.filter(m=>m.type==='cancel').map(m=>m.channel),['main'],'a control-socket drop cancels only its own channel');
+  const next=h.connect();next.receive({type:'close-highway',highwayId:'hw-1'});
+  assert.equal(again.readyState,3);assert.equal(h.messages.at(-1).type,'highway-closed');
+  h.window.beforeunload();
+});
+
+test('highways appear in the overview, their own tab with the lobby log, and the timeline',()=>{
+  const h=harness(),ws=h.connect();
+  const t={...measuredSnapshot(),sampledAt:20000,
+    highways:[{id:'hw-1',fileKey:'fileA',workerId:'w1',agentId:'builder',label:'builder',port:51234,state:'open',agent:'connected',plugin:'connected',queued:1,outbox:0,quarantine:false,
+      current:{requestId:'r5',laneId:'auto-r5',label:'Checkout',op:'create',category:'change',executionMs:2000,progress:{done:40,total:80},target:{pageId:'p9',page:'Checkout page',nodeId:'p9',kind:'write',bounds:null}}},
+      {id:'hw-2',fileKey:'fileA',workerId:'w1',agentId:'auditor',port:51240,state:'open',agent:'away',plugin:'connected',queued:0,outbox:2,quarantine:true,current:null}],
+    lobby:[{at:19000,event:'agent-away',highwayId:'hw-2',fileKey:'fileA',agentId:'auditor'},{at:18000,event:'opened',highwayId:'hw-1',fileKey:'fileA',agentId:'builder',port:51234}],
+    timeline:[{id:'x',workerId:'w1',highwayId:'hw-1',laneId:'$control',op:'find',category:'query',outcome:'succeeded',start:15000,end:15100}]};
+  ws.receive(t);
+  const rows=h.elements.get('overview-highways');
+  assert.match(rows.textContent,/builder/);assert.match(rows.textContent,/Checkout · 40 \/ 80 nodes/);assert.match(rows.textContent,/port 51234/);
+  assert.match(rows.querySelector('[data-key="hw-2"]').textContent,/Held · review/);assert.match(rows.querySelector('[data-key="hw-2"]').textContent,/2 waiting/);
+  assert.match(h.elements.get('overview-zones').textContent,/Checkout page/,'a highway write appears on the canvas map');
+  h.tab('highways');
+  assert.match(h.elements.get('highway-summary').textContent,/2 highways open/);
+  assert.match(h.elements.get('lobby-log').textContent,/Agent dropped · results kept/);assert.match(h.elements.get('lobby-log').textContent,/port 51234/);
+  h.tab('timeline');
+  assert.ok([...h.document.querySelectorAll('#visual-timeline .time-row span')].some(s=>s.textContent==='Highway · builder'));
+  h.window.beforeunload();
+});
+
+test('held items can be released after review with two clicks, never one',()=>{
+  const h=harness(),ws=h.connect();
+  ws.receive({...measuredSnapshot(),held:1,reservations:[{requestId:'r7',fileKey:'fileA',pageId:'p1',laneId:'auto-r7',agentId:'builder',label:'Header',state:'held',rect:{x:0,y:0,width:10,height:10}}]});
+  const button=()=>h.elements.get('alert').querySelector('[data-release="r7"]');
+  assert.match(button().textContent,/Release after review/);
+  h.document.click({target:button()});
+  assert.ok(!ws.sent.some(m=>m.type==='release-hold'),'the first click only arms it');assert.match(button().textContent,/Confirm/);
+  h.document.click({target:button()});
+  assert.deepEqual(ws.sent.filter(m=>m.type==='release-hold').map(m=>m.requestId),['r7']);
+  ws.receive({type:'release-result',requestId:'r7',result:{released:true}});
+  h.window.beforeunload();
+});
+
+test('reads, snapshots and control calls appear in the timeline and Activity with where and how much',()=>{
+  const h=harness(),ws=h.connect();
+  const t={...measuredSnapshot(),workers:measuredSnapshot().workers.map(w=>({...w,current:null})),lanes:[],
+    timeline:[{id:'c',workerId:'w1',laneId:'batch-1',label:'Batch 1',op:'batch',category:'batch',outcome:'partial',start:5000,end:9000},
+      {id:'a',workerId:'w1',laneId:'$control',op:'info',category:'query',outcome:'succeeded',start:9000,end:9001},
+      {id:'b',workerId:'w1',laneId:'$exclusive',op:'exportImage',category:'screenshot',outcome:'succeeded',start:8000,end:9500}],
+    recent:[{id:'b',workerId:'w1',laneId:'$exclusive',op:'exportImage',category:'screenshot',outcome:'succeeded',target:{pageId:'p1',page:'Home',nodeId:'4:2',kind:'snapshot'},responseBytes:2202009,completedAt:9500,queueMs:0,executionMs:1500},
+      {id:'q',workerId:'w1',laneId:'$exclusive',op:'find',category:'query',outcome:'succeeded',items:24,responseBytes:3000,target:{pageId:'p1',page:'Home',nodeId:'p1',kind:'read'},completedAt:9400,queueMs:0,executionMs:20},
+      {id:'c',workerId:'w1',laneId:'batch-1',label:'Batch 1',op:'batch',category:'batch',outcome:'partial',items:8,completedAt:9000,queueMs:100,executionMs:4000}]};
+  ws.receive(t);h.tab('timeline');
+  const rows=[...h.document.querySelectorAll('#visual-timeline .time-row')];
+  assert.deepEqual(rows.map(r=>r.querySelector('span').textContent),['Batch 1','Reads · info, exportImage']);
+  assert.ok(rows[1].querySelector('i.cat-query'));assert.ok(rows[1].querySelector('i.cat-screenshot'));assert.ok(rows[0].querySelector('i.failed'));
+  assert.match(h.elements.get('visual-timeline').textContent,/Snapshots \/ exports/);
+  h.tab('activity');const text=()=>h.elements.get('activity-list').textContent;
+  assert.match(text(),/Home/);assert.match(text(),/Node 4:2/);assert.match(text(),/2\.1 MB returned/);assert.match(text(),/24 results/);assert.match(text(),/8 commands/);
+  const filter=h.elements.get('filter');
+  filter.value='reads';filter.change({target:filter});assert.match(text(),/exportImage/);assert.match(text(),/find/);assert.doesNotMatch(text(),/Batch 1/);
+  filter.value='changes';filter.change({target:filter});assert.match(text(),/Batch 1/);assert.doesNotMatch(text(),/exportImage/);
+  filter.value='all';filter.change({target:filter});
+  ws.receive({...t,sequence:2,recent:[{id:'scan',workerId:'w1',laneId:'auto-1',label:'Placement scan',op:'layoutInfo',category:'query',outcome:'succeeded',items:21,completedAt:9600}]});
+  assert.match(text(),/21 frames scanned/);assert.doesNotMatch(text(),/scanneds/);
+  h.window.beforeunload();
 });

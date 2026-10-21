@@ -27,6 +27,13 @@ export function deadline(value, fallback) {
 
 export const immediate = cmd => ['ping', 'info', 'cancel', 'verifyFile', 'inspectReservation'].includes(cmd?.op);
 
+// Navigation changes the visible page, never artwork. Keep this exact: page
+// creation/rename/update and any batch containing them still require recovery.
+export const pageNavigation = cmd => cmd?.op === 'page' && cmd.action === 'select';
+export const navigationOnly = (action, payload) => action === 'cmd' ? pageNavigation(payload.cmd)
+  : action === 'cmd-batch' && payload.cmds.length > 0 && payload.cmds.every(pageNavigation);
+export const executionBudget = (action, payload) => action === 'cmd-batch' || pageNavigation(payload.cmd) ? 120000 : 60000;
+
 export function validateEnvelope(action, payload) {
   if (action === 'cmd') {
     if (!payload.cmd || Array.isArray(payload.cmd) || typeof payload.cmd !== 'object' || typeof payload.cmd.op !== 'string') {

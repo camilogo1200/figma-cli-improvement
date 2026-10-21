@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1060" viewBox="0 0 1400 1060" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#374151"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0066cc"/></marker>
+    <style>
+      .title { font-size: 26px; font-weight: 600; fill: #1c1c1e; }
+      .subtitle { font-size: 15px; fill: #636366; }
+      .actor { font-size: 15px; font-weight: 700; fill: #1c1c1e; }
+      .actorSub { font-size: 12px; fill: #636366; }
+      .m { font-size: 13px; fill: #1f2937; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+      .mb { font-size: 13px; fill: #0b4a8f; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+      .halo { paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+      .note { font-size: 13px; fill: #374151; }
+      .band { font-size: 12px; font-weight: 700; fill: #3f64a6; letter-spacing: .08em; }
+      .n { font-size: 11px; font-weight: 700; fill: #ffffff; }
+      .life { stroke: #c7cdd8; stroke-width: 1.5; stroke-dasharray: 5 5; }
+      .req { stroke: #374151; stroke-width: 1.8; fill: none; }
+      .res { stroke: #374151; stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+      .ctl { stroke: #0066cc; stroke-width: 1.8; fill: none; }
+    </style>
+  </defs>
+  <rect width="1400" height="1060" fill="#ffffff"/>
+  <text class="title" x="40" y="50">One agent, one highway: from opening to closing</text>
+  <text class="subtitle" x="40" y="76">Solid arrows are requests, dashed arrows are replies, blue arrows travel on the plugin's paired control socket.</text>
+
+  <!-- Actors -->
+  <g>
+    <rect x="50" y="104" width="160" height="58" rx="12" fill="#f6f2fd" stroke="#8b4ad2" stroke-width="1.5"/><text class="actor" x="66" y="130">Agent</text><text class="actorSub" x="66" y="149">bridge/fig.mjs client</text>
+    <rect x="280" y="104" width="160" height="58" rx="12" fill="#e6efff" stroke="#0066cc" stroke-width="1.5"/><text class="actor" x="296" y="130">Lobby</text><text class="actorSub" x="296" y="149">daemon · 127.0.0.1:3456</text>
+    <rect x="510" y="104" width="160" height="58" rx="12" fill="#ffffff" stroke="#8b4ad2" stroke-width="1.5"/><text class="actor" x="526" y="130">Highway</text><text class="actorSub" x="526" y="149">its own loopback port</text>
+    <rect x="730" y="104" width="160" height="58" rx="12" fill="#ffffff" stroke="#3f64a6" stroke-width="1.5"/><text class="actor" x="746" y="130">Coordinator</text><text class="actorSub" x="746" y="149">channels · zones · journal</text>
+    <rect x="950" y="104" width="160" height="58" rx="12" fill="#f7f7f8" stroke="#9aa3b2" stroke-width="1.5"/><text class="actor" x="966" y="130">Plugin window</text><text class="actorSub" x="966" y="149">ui.html · sockets</text>
+    <rect x="1170" y="104" width="180" height="58" rx="12" fill="#f7f7f8" stroke="#9aa3b2" stroke-width="1.5"/><text class="actor" x="1186" y="130">Plugin thread</text><text class="actorSub" x="1186" y="149">code.js · Figma API</text>
+  </g>
+  <path class="life" d="M130 162 V1030 M360 162 V1030 M590 162 V1030 M810 162 V1030 M1030 162 V1030 M1260 162 V1030"/>
+
+  <text class="band" x="40" y="194">OPENING</text>
+  <!-- 1 -->
+  <text class="m" x="168" y="206">open highway {fileKey, agentId} + token</text>
+  <path class="req" d="M132 220 H356" marker-end="url(#a)"/>
+  <!-- 2 -->
+  <text class="m" x="382" y="246">listen on 127.0.0.1:0, new ticket</text>
+  <path class="req" d="M362 258 H586" marker-end="url(#a)"/>
+  <!-- 3 -->
+  <text class="mb" x="616" y="286">open-highway {port, ticket} on the paired control socket</text>
+  <path class="ctl" d="M362 298 H1026" marker-end="url(#ab)"/>
+  <!-- 4 -->
+  <text class="m" x="168" y="326">{highwayId, port, ticket}</text>
+  <path class="res" d="M358 338 H134" marker-end="url(#a)"/>
+  <!-- 5 -->
+  <text class="m" x="676" y="366">WS /plugin · hello {ticket, fileKey, instanceId}</text>
+  <path class="req" d="M1028 378 H594" marker-end="url(#a)"/>
+  <!-- 6 -->
+  <text class="m" x="168" y="406">WS /agent · hello {ticket}</text>
+  <path class="req" d="M132 418 H586" marker-end="url(#a)"/>
+  <!-- 7 -->
+  <text class="m" x="168" y="446">ready</text>
+  <path class="res" d="M588 458 H134" marker-end="url(#a)"/>
+
+  <text class="band" x="40" y="496">WORK</text>
+  <!-- 8 -->
+  <text class="m" x="168" y="522">cmd {id, op: 'create', …}</text>
+  <path class="req" d="M132 534 H586" marker-end="url(#a)"/>
+  <!-- 9 -->
+  <text class="m" x="606" y="562">dispatch on this highway's channel</text>
+  <path class="req" d="M592 574 H806" marker-end="url(#a)"/>
+  <!-- 10 -->
+  <rect x="740" y="590" width="140" height="44" rx="8" fill="#eef2fa" stroke="#3f64a6"/>
+  <text class="note" x="752" y="608">zone admission,</text><text class="note" x="752" y="626">journal receipt</text>
+  <!-- 11 -->
+  <text class="m" x="826" y="662">cmd {wireId} via the highway socket</text>
+  <path class="req" d="M812 674 H1026" marker-end="url(#a)"/>
+  <!-- 12 -->
+  <text class="m" x="1046" y="702">queue for this highway</text>
+  <path class="req" d="M1032 714 H1256" marker-end="url(#a)"/>
+  <!-- 13 -->
+  <rect x="1180" y="730" width="170" height="44" rx="8" fill="#f4f6fb" stroke="#9aa3b2"/>
+  <text class="note" x="1192" y="748">runs; shares the thread</text><text class="note" x="1192" y="766">every 100 nodes</text>
+  <!-- 14 -->
+  <text class="m" x="840" y="802">busy · progress · result (through the window and highway)</text>
+  <path class="res" d="M1258 814 H812" marker-end="url(#a)"/>
+  <!-- 15 -->
+  <text class="m" x="168" y="842">progress · result (receipt recorded for the console)</text>
+  <path class="res" d="M808 854 H134" marker-end="url(#a)"/>
+
+  <text class="band" x="40" y="892">IF A SOCKET DROPS</text>
+  <rect x="60" y="904" width="600" height="58" rx="10" fill="#fff8ec" stroke="#e6c27a"/>
+  <text class="note" x="76" y="926">Agent end drops: the work continues and finished results wait in the outbox.</text>
+  <text class="note" x="76" y="946">The client reconnects to the same port with the same ticket within 60 s.</text>
+  <rect x="740" y="904" width="620" height="58" rx="10" fill="#fff8ec" stroke="#e6c27a"/>
+  <text class="note" x="756" y="926">Plugin end drops: nothing is cancelled; the session detaches. The same plugin</text>
+  <text class="note" x="756" y="946">instance reconnects within 60 s and sends the results it kept in the window.</text>
+
+  <text class="band" x="40" y="990">CLOSING</text>
+  <text class="m" x="168" y="1004">close</text>
+  <path class="req" d="M132 1016 H586" marker-end="url(#a)"/>
+  <text class="note halo" x="606" y="1012">Queued jobs return not-started; the running job finishes; close-highway reaches the plugin; the port is freed.</text>
+</svg>

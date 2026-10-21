@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, mkdirSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { StructuredBridge } from './structured-bridge.js';
-import { PROTOCOL, LIMITS, bridgeError, deadline, immediate, validateEnvelope } from './bridge-protocol.js';
+import { PROTOCOL, LIMITS, bridgeError, deadline, immediate, validateEnvelope, pageNavigation, executionBudget } from './bridge-protocol.js';
 import { PairedComputers, pairingChallenge } from './bridge-pairing.js';
 import { sizedRoots, layoutFootprint, findSpace, positionedCommand } from './bridge-layout.js';
 
@@ -12,6 +12,20 @@ const key = (v, name) => { if (typeof v !== 'string' || !/^[\w:.-]{1,128}$/.test
 const READS = new Set(['ping', 'info', 'verifyFile', 'inspectReservation', 'find', 'children', 'tree', 'exportImage', 'audit', 'fonts', 'layoutInfo']);
 const isRead = c => READS.has(c.op) || (c.op === 'page' && (!c.action || c.action === 'list'));
 const WRITES = new Set(['create', 'update', 'remove', 'reactions', 'flowStart', 'page', 'image', 'select', 'undo', 'reload']);
+const categoryOf = (action, c) => action === 'cmd-batch' ? 'batch' : pageNavigation(c) ? 'control' : c.op === 'exportImage' ? 'screenshot' : isRead(c) ? 'query' : immediate(c) ? 'control' : 'change';
+// Receipts say where a request read or wrote and how much came back, never what.
+const itemsOf = value => Array.isArray(value) ? value.length : Array.isArray(value?.created) ? value.created.length : Array.isArray(value?.bounds) ? value.bounds.length : null;
+const where = (t, c) => t ? { target: { pageId: t.pageId, page: t.page, nodeId: t.nodeId, kind: t.kind } }
+  : c && (typeof c.id === 'string' || typeof c.pageId === 'string') ? { target: { pageId: short(c.pageId), page: null, nodeId: short(c.id), kind: null } } : {};
+// Finished zones stay on the console map briefly; afterwards their frames are
+// ordinary artwork in the page sketch. They remain enforced either way.
+const MAP_RECENT_MS = 120000;
+const finishedAt = r => r.completedAt || r.reconciledAt || r.admittedAt || 0;
+const n0 = v => Number.isFinite(v) && v > 0 ? v : 0;
+// History and sketches are optional: trim them before ever dropping a live snapshot.
+const TELEMETRY_BYTES = 131072;
+const TRIMS = [s => { s.timeline = s.timeline?.slice(0, 80); s.recent = s.recent?.slice(0, 20); },
+  s => { s.sketches = s.sketches?.slice(0, 8); s.timeline = s.timeline?.slice(0, 30); }, s => { s.sketches = []; s.timeline = []; s.recent = s.recent?.slice(0, 5); }];
 export function rectangle(r) {
   if (!r || !['x', 'y', 'width', 'height'].every(k => Number.isFinite(r[k]) && Math.abs(r[k]) <= 1e7) || r.width <= 0 || r.height <= 0) fail('invalid-request', 'A finite, positive page-space rectangle is required');
   return { x: r.x, y: r.y, width: r.width, height: r.height };
@@ -19,6 +33,13 @@ export function rectangle(r) {
 export function intersects(a, b, gutter = 0) {
   return a.x < b.x + b.width + gutter && a.x + a.width + gutter > b.x && a.y < b.y + b.height + gutter && a.y + a.height + gutter > b.y;
 }
+
+// Holds are scoped to the channel that produced them. The file's own channel
+// keeps the original file-keyed format; a highway's hold names its highway, so
+// an unknown outcome there blocks that highway only, never the whole file.
+const holdKey = h => h.scope || h.fileKey;
+const scopeOf = channel => channel.kind === 'highway' ? 'highway:' + channel.id : null;
+const laneOwner = channel => channel.kind === 'highway' ? 'hw:' + channel.id : channel.workerId;
 
 // Only metadata is persisted. A receipt is written BEFORE dispatch; an unfinished
 // receipt becomes a hold after restart, never an automatic mutation replay.
@@ -31,7 +52,7 @@ export class ReservationJournal {
       this.fence = data.fence;
       if (data.taskLanes && (!Array.isArray(data.taskLanes) || data.taskLanes.length > 64)) throw Error('Invalid task lane journal');
       for (const lane of data.taskLanes || []) { key(lane.laneId, 'laneId'); key(lane.fileKey, 'fileKey'); key(lane.pageId, 'pageId'); key(lane.agentId, 'agentId'); this.taskLanes.set(lane.laneId, lane); }
-      for (const r of data.fileHolds || []) { if (typeof r.fileKey !== 'string') throw Error('Invalid file hold'); this.fileHolds.set(r.fileKey, { ...r, state: 'held' }); }
+      for (const r of data.fileHolds || []) { if (typeof r.fileKey !== 'string') throw Error('Invalid file hold'); this.fileHolds.set(holdKey(r), { ...r, state: 'held' }); }
       for (const r of data.records) {
         key(r.requestId, 'requestId'); key(r.fileKey, 'fileKey'); key(r.pageId, 'pageId'); rectangle(r.rect);
         if (!['committed', 'released', 'held'].includes(r.state)) r.state = 'held';
@@ -56,6 +77,9 @@ export class BridgeCoordinator {
     this.computers = new PairedComputers(pairingPath); this.approvePairing = approvePairing;
     this.journal = new ReservationJournal(journalPath); this.workers = new Map(); this.pairings = new Map(); this.credentials = new Map();
     this.jobs = new Map(); this.receipts = []; this.lastLane = new Map(); this.turn = 0; this.batchSequence = 0; this.handshakes = new Set(); this.lifecycleBusy = false;
+    // Highway channels are registered by bridge-highways.js. Each one is shaped like
+    // a worker (fileKey, workerId, bridge, active) so queues and holds stay per channel.
+    this.highways = new Map(); this.onWorkerReady = null; this.lobby = [];
     this.uiTimer = null; this.uiDirty = false; this.progressWorkers = new Set();
     this.timer = setInterval(() => this.publish(), 1000); this.timer.unref();
   }
@@ -136,13 +160,21 @@ export class BridgeCoordinator {
               }
               return;
             }
-            if (m.type === 'subscribe') { w.visible = m.visible === true; w.mode = m.mode === 'compact' ? 'compact' : 'standard'; if (w.visible) this.schedulePublish(); }
+            // The banner shows only connection status, so it takes the small summary too.
+            if (m.type === 'subscribe') { w.visible = m.visible === true; w.mode = ['compact', 'stealth'].includes(m.mode) ? 'compact' : 'standard'; if (w.visible) this.schedulePublish(); }
             if (m.type === 'progress' && w.active?.wireId === m.id) this.schedulePublish(w);
             if (m.type === 'coordinator-cancel' && typeof m.requestId === 'string') this.cancel(m.requestId, w.workerId);
+            if (m.type === 'release-hold' && typeof m.requestId === 'string') {
+              let result, error;
+              try { result = this.release(m.requestId, { workerId: w.workerId, sessionEpoch: w.sessionEpoch, fileKey: w.fileKey }); } catch (e) { error = e.message; }
+              ws.send(JSON.stringify({ type: 'release-result', requestId: m.requestId.slice(0, 128), ...(error ? { error } : { result }) })); this.publish();
+            }
           } catch { ws.close(1008, 'Invalid control message'); }
         });
+        // Only this socket's own queue ends here; highways have their own plugin sockets.
         ws.on('close', () => { for (const j of [...this.jobs.values()]) if (j.worker === w && j.state === 'queued') this.finish(j, bridgeError('plugin-offline', 'Worker disconnected before dispatch', { outcome: 'not-started' })); });
         this.publish(w);
+        try { this.onWorkerReady?.(w); } catch (e) { this.log('highway-announce-failed', { message: e.message }); }
       } catch (e) { cleanup(); ws.close(1008, String(e.message).replace(/[^\x20-\x7e]/g, '?').slice(0, 120)); }
     };
     ws.on('message', hello); ws.on('close', cleanup); ws.on('error', cleanup);
@@ -186,31 +218,66 @@ export class BridgeCoordinator {
   }
   get pending() { return this.jobs; }
   get session() { return [...this.workers.values()].find(w => w.bridge.connected())?.bridge.session; }
-  get recoveryRequired() { return [...this.journal.fileHolds.values()].some(r => r.state === 'held') || [...this.journal.records.values()].some(r => r.state === 'held') || [...this.workers.values()].some(w => w.bridge.recoveryRequired); }
-  quarantined(fileKey) { return this.journal.fileHolds.get(fileKey || '*')?.state === 'held' || this.journal.fileHolds.get('*')?.state === 'held' || [...this.journal.records.values()].some(r => r.fileKey === fileKey && r.state === 'held'); }
-  protected(fileKey) { return [...this.journal.records.values()].some(r => r.fileKey === fileKey && r.state !== 'released'); }
+  get recoveryRequired() { return [...this.journal.fileHolds.values()].some(r => r.state === 'held') || [...this.journal.records.values()].some(r => r.state === 'held') || this.channels().some(w => w.bridge.recoveryRequired); }
+  channels() { return [...this.workers.values(), ...this.highways.values()]; }
+  // A file key (or the file's own channel) asks about the file's channel; a
+  // highway asks about itself. Held geometry still blocks overlapping zones for everyone.
+  quarantined(target) {
+    const channel = target && typeof target === 'object' ? target : null, scope = channel && scopeOf(channel), records = [...this.journal.records.values()];
+    if (scope) return this.journal.fileHolds.get(scope)?.state === 'held' || records.some(r => r.scope === scope && r.state === 'held');
+    const fileKey = channel ? channel.fileKey : target;
+    return this.journal.fileHolds.get(fileKey || '*')?.state === 'held' || this.journal.fileHolds.get('*')?.state === 'held' || records.some(r => !r.scope && r.fileKey === fileKey && r.state === 'held');
+  }
+  // Only zones that are still in flight or unresolved count. A committed zone is
+  // ordinary artwork and no longer blocks anyone (it still shapes placement).
+  protected(fileKey) { return [...this.journal.records.values()].some(r => r.fileKey === fileKey && ['reserved', 'running', 'held'].includes(r.state)); }
+  // The operator inspected the canvas and accepts the result: frees a hold that has
+  // no plugin proof (unscoped writes, closed highways). Never automatic.
+  release(requestId, route) {
+    const w = this.select(route), id = key(requestId, 'requestId'), record = this.journal.records.get(id);
+    const hold = [...this.journal.fileHolds.values()].find(h => h.requestId === id && h.state === 'held');
+    let undo;
+    if (record?.state === 'held' && record.fileKey === w.fileKey) {
+      undo = () => { record.state = 'held'; delete record.releasedAt; };
+      Object.assign(record, { state: 'released', outcome: 'operator-released', releasedAt: Date.now() });
+    } else if (hold && (hold.fileKey === w.fileKey || hold.fileKey === '*')) {
+      undo = () => this.journal.fileHolds.set(holdKey(hold), hold);
+      this.journal.fileHolds.delete(holdKey(hold));
+    } else fail('invalid-request', 'Only a held item in this file can be released');
+    try { this.journal.save(); } catch (e) { undo(); throw e; }
+    for (const channel of this.channels()) if (channel.fileKey === w.fileKey && !this.quarantined(channel)) channel.bridge.recoveryRequired = false;
+    this.record({ id: 'release-' + id, workerId: w.workerId, laneId: '$control', label: 'Released after review · ' + ((record || hold).label || id), pageId: record?.pageId || null,
+      op: 'release', category: 'control', outcome: 'succeeded', kind: null, completedAt: Date.now(), queueMs: 0, executionMs: 0 });
+    for (const channel of this.channels()) queueMicrotask(() => this.drain(channel));
+    return { requestId: id, released: true };
+  }
   async dispatch(action, payload, options = {}) {
     validateEnvelope(action, payload);
-    let route = options.coordination; const w = this.select(route);
+    // A highway is already bound to one file; everything else routes by worker.
+    let route = options.coordination; const w = options.channel || this.select(route);
+    if (options.channel && route?.fileKey !== undefined && route.fileKey !== w.fileKey) fail('wrong-file', 'This highway belongs to another file');
+    if (w.kind === 'highway' && !['opening', 'open'].includes(w.state)) fail('highway-closed', 'This highway is closing; open a new one');
     const commands = action === 'cmd' ? [payload.cmd] : payload.cmds;
     if (commands.some(c => c.coordination || c.lease)) fail('invalid-request', 'Routing belongs in the submission envelope');
     if (action === 'cmd' && immediate(payload.cmd)) {
       if (payload.cmd.op === 'cancel') for (const j of [...this.jobs.values()]) if (j.worker === w && (!payload.cmd.id || j.id === payload.cmd.id)) this.cancel(j.id, w.workerId);
       // Control/read commands bypass the canvas queue, but still leave an action
       // receipt. Keep response contents (especially image bytes) out of telemetry.
-      const startedAt = Date.now(); let wireId, error;
+      const startedAt = Date.now(); let wireId, error, value, reply;
       try {
-        return await w.bridge.dispatch(action, payload, { ...options, onId: id => { wireId = id; options.onId?.(id); } });
+        return value = await w.bridge.dispatch(action, payload, { ...options, onId: id => { wireId = id; options.onId?.(id); }, onReply: info => { reply = info; } });
       } catch (e) { error = e; throw e; }
       finally {
-        if (wireId) this.record({ id: wireId, workerId: w.workerId, laneId: '$control', pageId: null,
+        if (wireId) this.record({ id: wireId, workerId: w.workerId, laneId: '$control', pageId: short(payload.cmd.pageId),
           op: payload.cmd.op, category: isRead(payload.cmd) ? 'query' : 'control', outcome: error?.outcome || (error ? 'failed' : 'succeeded'),
-          kind: error?.kind || null, completedAt: Date.now(), queueMs: 0, executionMs: Date.now() - startedAt });
+          kind: error?.kind || null, completedAt: Date.now(), queueMs: 0, executionMs: Date.now() - startedAt,
+          responseBytes: reply?.responseBytes ?? null, items: itemsOf(value), ...where(reply?.target, payload.cmd) });
       }
     }
-    if (this.lifecycleBusy || w.bridge.lifecycleBusy) fail('worker-busy', 'Document lifecycle is active');
-    if (w.bridge.recoveryRequired || this.quarantined(w.fileKey)) fail('worker-uncertain', 'This file has held work requiring reconciliation');
-    const timeoutMs = deadline(options.timeoutMs, action === 'cmd-batch' ? 120000 : 60000), queueTimeoutMs = deadline(options.queueTimeoutMs, LIMITS.queueTimeoutMs);
+    if (this.lifecycleBusy || this.channels().some(x => x.fileKey === w.fileKey && x.bridge.lifecycleBusy)) fail('worker-busy', 'Document lifecycle is active');
+    if (w.bridge.recoveryRequired || this.quarantined(w)) fail('worker-uncertain', w.kind === 'highway'
+      ? 'This highway has held work requiring review; other highways are unaffected' : 'This file has held work requiring reconciliation');
+    const timeoutMs = deadline(options.timeoutMs, executionBudget(action, payload)), queueTimeoutMs = deadline(options.queueTimeoutMs, LIMITS.queueTimeoutMs);
     if (options.signal?.aborted) fail('client-gone', 'Client disconnected before admission');
     const bytes = Buffer.byteLength(JSON.stringify(payload));
     if (bytes > LIMITS.messageBytes || this.jobs.size >= 32 || [...this.jobs.values()].reduce((s, j) => s + j.bytes, bytes) > 32 * 1048576) fail('queue-full', 'Coordinator job/byte budget exceeded');
@@ -257,9 +324,12 @@ export class BridgeCoordinator {
       }
       if (this.journal.records.size >= 512) fail('journal-full', 'Receipt capacity reached; archive/reconcile before accepting more zone work');
       lease = { requestId: id, leaseId: randomUUID(), token: ++this.journal.fence, fileKey: w.fileKey, pageId: route.pageId,
-        laneId, agentId: route.agentId, label: short(route.label), rect, gutter, dependencies, state: 'reserved', admittedAt: Date.now() };
+        laneId, agentId: route.agentId, label: short(route.label), rect, gutter, dependencies, state: 'reserved', admittedAt: Date.now(), ...(scopeOf(w) ? { scope: scopeOf(w) } : {}) };
       this.journal.records.set(id, lease); this.journal.save();
-    } else if (this.protected(w.fileKey) && commands.some(c => !isRead(c))) fail('protected-file', 'Unscoped writers cannot bypass this file’s reservations');
+    }
+    // Writers without a zone are no longer refused because of other zones: they
+    // cannot know an in-flight job's node ids, and every zone job validates its
+    // own area and rolls back on interference. Zone-vs-zone overlap is still refused.
     // A batch is one ordered unit of work with an automatically assigned lane.
     // Independent batches can be admitted together without sharing $exclusive;
     // the worker still finishes the current batch before taking another turn.
@@ -267,12 +337,12 @@ export class BridgeCoordinator {
     const label = batch ? short(route?.label) || `Batch ${++this.batchSequence} · ${commands.length} commands` : null;
     if (batch) laneId = 'batch-' + id;
     return new Promise((resolve, reject) => {
-      const j = { id, worker: w, laneId, lease, autoPlan, label, payload, action, bytes, state: 'queued', enqueuedAt: Date.now(), timeoutMs, queueTimeoutMs, resolve, reject, signal: options.signal };
+      const j = { id, worker: w, laneId, lease, autoPlan, label, payload, action, bytes, state: 'queued', enqueuedAt: Date.now(), timeoutMs, queueTimeoutMs, resolve, reject, signal: options.signal, onWire: options.onId };
       j.abort = () => this.cancel(id, w.workerId, 'client-gone');
       j.timer = setTimeout(() => this.finish(j, bridgeError('queue-timeout', 'Coordinator queue deadline exceeded', { outcome: 'not-started' })), queueTimeoutMs);
-      const turnKey = w.workerId + '/' + laneId;
+      const turnKey = laneOwner(w) + '/' + laneId;
       if (!this.lastLane.has(turnKey)) this.lastLane.set(turnKey, this.turn);
-      this.jobs.set(id, j); options.signal?.addEventListener('abort', j.abort, { once: true });
+      this.jobs.set(id, j); options.signal?.addEventListener('abort', j.abort, { once: true }); options.onJob?.(id);
       this.schedulePublish();
       queueMicrotask(() => this.drain(w));
     });
@@ -293,42 +363,52 @@ export class BridgeCoordinator {
     for (const j of waiting) if (this.jobs.has(j.id) && !heads.has(j.laneId)) heads.set(j.laneId, j);
     const ready = [...heads.values()].filter(j => !this.blocked(j));
     // Least-recently-served lane: all ready peers get a turn, even under sustained arrivals.
-    ready.sort((a, b) => (this.lastLane.get(w.workerId + '/' + a.laneId) || 0) - (this.lastLane.get(w.workerId + '/' + b.laneId) || 0) || a.enqueuedAt - b.enqueuedAt);
+    const owner = laneOwner(w);
+    ready.sort((a, b) => (this.lastLane.get(owner + '/' + a.laneId) || 0) - (this.lastLane.get(owner + '/' + b.laneId) || 0) || a.enqueuedAt - b.enqueuedAt);
     const j = ready[0];
     if (!j) return;
-    w.active = j; j.state = 'running'; j.startedAt = Date.now(); clearTimeout(j.timer); this.lastLane.set(w.workerId + '/' + j.laneId, ++this.turn);
+    w.active = j; j.state = 'running'; j.startedAt = Date.now(); clearTimeout(j.timer); this.lastLane.set(owner + '/' + j.laneId, ++this.turn);
     this.schedulePublish();
     try {
-      if (!j.lease && !j.autoPlan && this.protected(w.fileKey) && (j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds).some(c => !isRead(c))) fail('protected-file', 'New reservations prevent this previously queued unscoped writer');
-      if (this.quarantined(w.fileKey)) fail('worker-uncertain', 'A previous job requires reconciliation');
+      if (this.quarantined(w)) fail('worker-uncertain', 'A previous job requires reconciliation');
       if (j.autoPlan) {
         const plan = j.autoPlan;
         j.phase = 'planning';
-        const scene = await w.bridge.dispatch('cmd', { cmd: { op: 'layoutInfo', pageId: plan.pageId, expectedFileKey: w.fileKey } },
-          { timeoutMs: Math.min(j.timeoutMs, 30000), signal: j.signal, onId: id => { j.wireId = id; } });
+        // The placement scan is a real read of the page; it gets its own receipt.
+        const scanStarted = Date.now(); let scene, scanWire = null, scanError = null, scanReply = null;
+        try {
+          scene = await w.bridge.dispatch('cmd', { cmd: { op: 'layoutInfo', pageId: plan.pageId, expectedFileKey: w.fileKey } },
+            { timeoutMs: Math.min(j.timeoutMs, 30000), signal: j.signal, onId: id => { j.wireId = id; scanWire = id; }, onReply: info => { scanReply = info; } });
+        } catch (e) { scanError = e; throw e; }
+        finally {
+          if (scanWire) this.record({ id: scanWire, workerId: w.workerId, laneId: j.laneId, label: 'Placement scan · ' + plan.label, pageId: plan.pageId,
+            op: 'layoutInfo', category: 'query', outcome: scanError ? scanError.outcome || 'failed' : 'succeeded', kind: scanError?.kind || null,
+            agentId: plan.agentId, completedAt: Date.now(), queueMs: 0, executionMs: Date.now() - scanStarted,
+            responseBytes: scanReply?.responseBytes ?? null, items: itemsOf(scene), ...where(scanReply?.target, { pageId: plan.pageId }) });
+        }
         j.wireId = null;
         if (j.state === 'cancelling' || j.signal?.aborted) fail('cancelled', 'Layout cancelled before creation.');
         if (!w.bridge.connected() || scene.fileKey !== w.fileKey || scene.pageId !== plan.pageId || !Array.isArray(scene.bounds)) fail('wrong-file', 'Canvas identity changed during placement.');
-        if (this.quarantined(w.fileKey)) fail('worker-uncertain', 'The file requires reconciliation.');
+        if (this.quarantined(w)) fail('worker-uncertain', 'The file requires reconciliation.');
         const reserved = [...this.journal.records.values()].filter(r => r.fileKey === w.fileKey && r.pageId === plan.pageId && r.state !== 'released').map(r => ({ ...r.rect, gutter: r.gutter }));
         const rect = rectangle(findSpace(plan.footprint, [...scene.bounds, ...reserved]));
         if (this.journal.records.size >= 512) fail('journal-full', 'Receipt capacity reached.');
-        j.lease = { requestId: j.id, leaseId: randomUUID(), token: ++this.journal.fence, fileKey: w.fileKey, pageId: plan.pageId, laneId: j.laneId, agentId: plan.agentId, label: plan.label, rect, gutter: 24, dependencies: [], state: 'reserved', admittedAt: j.enqueuedAt, automatic: true };
+        j.lease = { requestId: j.id, leaseId: randomUUID(), token: ++this.journal.fence, fileKey: w.fileKey, pageId: plan.pageId, laneId: j.laneId, agentId: plan.agentId, label: plan.label, rect, gutter: 24, dependencies: [], state: 'reserved', admittedAt: j.enqueuedAt, automatic: true, ...(scopeOf(w) ? { scope: scopeOf(w) } : {}) };
         this.journal.records.set(j.id, j.lease); this.journal.save();
         j.payload = { cmd: positionedCommand(j.payload.cmd, plan.footprint, rect, plan.pageId) }; j.phase = 'creating';
         this.schedulePublish();
       }
       if (j.lease) { j.lease.state = 'running'; this.journal.save(); }
-      else if ((j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds).some(c => WRITES.has(c.op) && !isRead(c))) {
-        j.fileHold = { fileKey: w.fileKey || '*', requestId: j.id, state: 'running', workerId: w.workerId, sessionEpoch: w.sessionEpoch };
-        this.journal.fileHolds.set(j.fileHold.fileKey, j.fileHold); this.journal.save();
+      else if ((j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds).some(c => WRITES.has(c.op) && !isRead(c) && !pageNavigation(c))) {
+        j.fileHold = { fileKey: w.fileKey || '*', ...(scopeOf(w) ? { scope: scopeOf(w) } : {}), requestId: j.id, label: j.label || short(j.payload.cmd?.op), state: 'running', workerId: w.workerId, sessionEpoch: w.sessionEpoch };
+        this.journal.fileHolds.set(holdKey(j.fileHold), j.fileHold); this.journal.save();
       }
       const scope = j.lease && { ...j.lease, sessionEpoch: w.sessionEpoch, coordinatorEpoch: this.epoch };
       const target = c => w.fileKey ? { ...c, expectedFileKey: c.expectedFileKey ?? w.fileKey } : c;
       const targeted = j.action === 'cmd' ? { cmd: target(j.payload.cmd) } : { cmds: j.payload.cmds.map(target) };
       const value = await w.bridge.dispatch(j.action, { ...targeted, ...(scope ? { lease: scope } : {}) },
-        { timeoutMs: j.timeoutMs, queueTimeoutMs: j.queueTimeoutMs, signal: j.signal, onId: id => {
-          j.wireId = id;
+        { timeoutMs: j.timeoutMs, queueTimeoutMs: j.queueTimeoutMs, signal: j.signal, onReply: info => { j.reply = info; }, onId: id => {
+          j.wireId = id; j.onWire?.(id);
           const receipt = j.lease || j.fileHold;
           if (receipt) { Object.assign(receipt, { wireId: id, workerId: w.workerId, sessionEpoch: w.sessionEpoch }); this.journal.save(); }
         } });
@@ -348,23 +428,32 @@ export class BridgeCoordinator {
       try { this.journal.save(); } catch (e) { j.lease.state = 'held'; error = bridgeError('journal-failed', e.message, { outcome: 'uncertain' }); }
     }
     if (j.fileHold) {
-      if (['succeeded', 'not-started', 'rolled-back'].includes(outcome)) this.journal.fileHolds.delete(j.fileHold.fileKey);
+      // A failed navigation can stop a batch before any artwork command starts.
+      // Require a complete, terminal result for every potential writer before
+      // releasing that batch's hold; a successful/unknown write still holds.
+      const noArtwork = !error && j.action === 'cmd-batch' && Array.isArray(value) && value.length === j.payload.cmds.length &&
+        j.payload.cmds.every((c, i) => isRead(c) || pageNavigation(c) ||
+          (value[i]?.success === false && ['not-started', 'rolled-back'].includes(value[i].outcome)));
+      if (noArtwork || ['succeeded', 'not-started', 'rolled-back'].includes(outcome)) this.journal.fileHolds.delete(holdKey(j.fileHold));
       else j.fileHold.state = 'held';
-      try { this.journal.save(); } catch (e) { j.fileHold.state = 'held'; this.journal.fileHolds.set(j.fileHold.fileKey, j.fileHold); error = bridgeError('journal-failed', e.message, { outcome: 'uncertain' }); }
+      try { this.journal.save(); } catch (e) { j.fileHold.state = 'held'; this.journal.fileHolds.set(holdKey(j.fileHold), j.fileHold); error = bridgeError('journal-failed', e.message, { outcome: 'uncertain' }); }
     }
     this.jobs.delete(j.id);
-    if (![...this.jobs.values()].some(other => other.worker === j.worker && other.laneId === j.laneId)) this.lastLane.delete(j.worker.workerId + '/' + j.laneId);
-    this.record({ id: j.id, workerId: j.worker.workerId, laneId: j.laneId, label: j.lease?.label || j.autoPlan?.label || j.label, pageId: j.lease?.pageId || null,
+    if (![...this.jobs.values()].some(other => other.worker === j.worker && other.laneId === j.laneId)) this.lastLane.delete(laneOwner(j.worker) + '/' + j.laneId);
+    const navigation = j.action === 'cmd' && pageNavigation(j.payload.cmd);
+    this.record({ id: j.id, workerId: j.worker.workerId, laneId: j.laneId, highwayId: j.worker.kind === 'highway' ? j.worker.id : null, label: j.lease?.label || j.autoPlan?.label || j.label, pageId: j.lease?.pageId || (navigation ? j.payload.cmd.id : null),
       op: j.action === 'cmd' ? short(j.payload.cmd.op) : 'batch', outcome: error?.outcome || outcome, kind: error?.kind || null,
-      category: j.action === 'cmd-batch' ? 'batch' : j.payload.cmd.op === 'exportImage' ? 'screenshot' : isRead(j.payload.cmd) ? 'query' : 'change',
+      category: categoryOf(j.action, j.payload.cmd), agentId: j.lease?.agentId || j.autoPlan?.agentId || null,
+      responseBytes: j.reply?.responseBytes ?? null, items: itemsOf(value), ...where(j.reply?.target, j.action === 'cmd' ? j.payload.cmd : null),
+      ...(navigation ? { navigation: error?.details?.navigation || value?.navigation || null } : {}),
       performance: value?.performance ? Object.fromEntries(['spatialChecks', 'spatialNodes', 'spatialMs', 'spatialMaxMs', 'yieldCount', 'yieldMs']
         .filter(k => Number.isFinite(value.performance[k]) && value.performance[k] >= 0).map(k => [k, value.performance[k]])) : null,
       completedAt: Date.now(), queueMs: (j.startedAt || Date.now()) - j.enqueuedAt, executionMs: j.startedAt ? Date.now() - j.startedAt : 0 });
     if (error) j.reject(error); else j.resolve(value);
-    for (const w of this.workers.values()) queueMicrotask(() => this.drain(w));
+    for (const channel of this.channels()) queueMicrotask(() => this.drain(channel));
   }
   record(receipt) {
-    this.receipts.unshift(receipt); this.receipts.length = Math.min(50, this.receipts.length);
+    this.receipts.unshift(receipt); this.receipts.length = Math.min(200, this.receipts.length);
     this.schedulePublish();
   }
   cancel(id, workerId, kind = 'cancelled') {
@@ -381,8 +470,8 @@ export class BridgeCoordinator {
     if (!lease && !hold) return;
     if (lease && ['not-started', 'rolled-back'].includes(outcome)) { lease.state = 'released'; lease.outcome = outcome; }
     else if (lease && outcome === 'succeeded' && Array.isArray(msg.result?.created)) { lease.state = 'committed'; lease.outcome = outcome; lease.nodeIds = msg.result.created.map(n => n.id).slice(0, 64); }
-    if (hold && ['not-started', 'rolled-back', 'succeeded'].includes(outcome)) this.journal.fileHolds.delete(hold.fileKey);
-    try { this.journal.save(); } catch { if (lease) lease.state = 'held'; if (hold) this.journal.fileHolds.set(hold.fileKey, hold); return; }
+    if (hold && ['not-started', 'rolled-back', 'succeeded'].includes(outcome)) this.journal.fileHolds.delete(holdKey(hold));
+    try { this.journal.save(); } catch { if (lease) lease.state = 'held'; if (hold) this.journal.fileHolds.set(holdKey(hold), hold); return; }
     const event = this.receipts.find(e => e.id === (lease || hold).requestId);
     if (event) { event.outcome = outcome; event.detail = 'Late acknowledgement from the original session'; }
   }
@@ -393,17 +482,24 @@ export class BridgeCoordinator {
     if (w.active || d.busy || d.pending || d.uncertain || [...this.jobs.values()].some(j => j.worker === w)) fail('worker-busy', 'Reconciliation requires an idle, settled worker');
     // Block new work while the read-only plugin proof is in flight.
     w.bridge.lifecycleBusy = true;
+    const started = Date.now(); let wireId = null, failure = null;
     try {
       const proof = await w.bridge.dispatch('cmd', { cmd: { op: 'inspectReservation', expectedFileKey: r.fileKey, pageId: r.pageId,
-        leaseId: r.leaseId, token: r.token, requestId: r.requestId } }, { timeoutMs: 10000 });
+        leaseId: r.leaseId, token: r.token, requestId: r.requestId } }, { timeoutMs: 10000, onId: id => { wireId = id; } });
       if (proof.requestId !== r.requestId || proof.token !== r.token || proof.fileKey !== r.fileKey || !['committed', 'rolled-back'].includes(proof.state)) fail('unverifiable', 'Plugin proof does not match held reservation');
       if (proof.state === 'committed' && (JSON.stringify(proof.rect) !== JSON.stringify(r.rect) || proof.gutter !== r.gutter || !Array.isArray(proof.nodeIds) || !proof.nodeIds.length || proof.nodeIds.length > 64)) fail('unverifiable', 'Commit geometry does not match the held reservation');
       r.state = proof.state === 'committed' ? 'committed' : 'released'; r.outcome = proof.state === 'committed' ? 'succeeded' : 'rolled-back';
       r.nodeIds = Array.isArray(proof.nodeIds) ? proof.nodeIds.slice(0, 64) : []; r.reconciledAt = Date.now();
       try { this.journal.save(); } catch (e) { r.state = 'held'; throw e; }
-      if (!this.quarantined(w.fileKey)) w.bridge.recoveryRequired = false;
+      for (const channel of this.channels()) if (channel.fileKey === w.fileKey && !this.quarantined(channel)) channel.bridge.recoveryRequired = false;
       return { requestId, state: r.state, outcome: r.outcome, nodeIds: r.nodeIds };
-    } finally { w.bridge.lifecycleBusy = false; }
+    } catch (e) { failure = e; throw e; }
+    finally {
+      w.bridge.lifecycleBusy = false;
+      if (wireId) this.record({ id: wireId, workerId: w.workerId, laneId: r.laneId || '$control', label: 'Reconcile proof · ' + (r.label || r.requestId), pageId: r.pageId,
+        op: 'inspectReservation', category: 'query', outcome: failure ? failure.outcome || 'failed' : 'succeeded', kind: failure?.kind || null,
+        completedAt: Date.now(), queueMs: 0, executionMs: Date.now() - started, ...where(null, { pageId: r.pageId }) });
+    }
   }
   diagnostics() {
     const all = [...this.workers.values()], d = all[0]?.bridge.diagnostics() || {};
@@ -414,23 +510,40 @@ export class BridgeCoordinator {
   }
   snapshot(compact = false) {
     const now = Date.now(), jobs = [...this.jobs.values()], records = [...this.journal.records.values()].filter(r => r.state !== 'released');
+    const mapped = records.filter(r => r.state !== 'committed' || now - finishedAt(r) <= MAP_RECENT_MS), earlier = new Map();
+    for (const r of records) if (r.state === 'committed' && now - finishedAt(r) > MAP_RECENT_MS) earlier.set(r.fileKey, (earlier.get(r.fileKey) || 0) + 1);
     const workers = [...this.workers.values()].map(w => { const d = w.bridge.diagnostics(); return { workerId: w.workerId, sessionEpoch: w.sessionEpoch,
       fileKey: w.fileKey, file: short(d.identity?.file), page: short(d.identity?.page), pageId: d.identity?.pageId, connected: d.connected,
-      quarantine: d.recoveryRequired || this.quarantined(w.fileKey), lastSeen: d.lastSeen,
-      current: w.active ? { requestId: w.active.id, wireId: w.active.wireId, laneId: w.active.laneId, pageId: w.active.lease?.pageId || w.active.autoPlan?.pageId, label: w.active.lease?.label || w.active.autoPlan?.label || w.active.label,
-        phase: w.active.phase || w.active.state, executionMs: now - w.active.startedAt, progress: w.bridge.pending.get(w.active.wireId)?.progress || null } : null }; });
+      quarantine: d.recoveryRequired || this.quarantined(w.fileKey), lastSeen: d.lastSeen, current: this.currentOf(w, now) }; });
+    const highways = [...this.highways.values()].map(h => ({ id: h.id, fileKey: h.fileKey, workerId: h.workerId, sessionEpoch: h.sessionEpoch, agentId: h.agentId, label: h.label, port: h.port,
+      state: h.state, agent: h.agentState, plugin: h.bridge.connected() ? 'connected' : h.bridge.detached() ? 'away' : 'waiting',
+      queued: jobs.filter(j => j.worker === h && j.state === 'queued').length, outbox: h.outbox?.length || 0, openedAt: h.openedAt,
+      quarantine: h.bridge.recoveryRequired || this.quarantined(h), current: this.currentOf(h, now) }));
     const snapshot = { type: 'telemetry', schema: 1, sequence: ++this.seq, coordinatorEpoch: this.epoch, sampledAt: now, source: 'daemon',
-      workers, maxWorkers: this.maxWorkers, taskLanes: this.laneSummary(), budgets: { jobs: jobs.length, maxJobs: 32, bytes: jobs.reduce((s, j) => s + j.bytes, 0), maxBytes: 32 * 1048576 }, held: records.filter(r => r.state === 'held').length + [...this.journal.fileHolds.values()].filter(r => r.state === 'held').length };
-    if (!compact) Object.assign(snapshot, { resources: this.resources(), lanes: jobs.map(j => ({ requestId: j.id, workerId: j.worker.workerId, laneId: j.laneId,
+      workers, highways, maxWorkers: this.maxWorkers, taskLanes: this.laneSummary(), budgets: { jobs: jobs.length, maxJobs: 32, bytes: jobs.reduce((s, j) => s + j.bytes, 0), maxBytes: 32 * 1048576 }, held: records.filter(r => r.state === 'held').length + [...this.journal.fileHolds.values()].filter(r => r.state === 'held').length };
+    if (!compact) Object.assign(snapshot, { resources: this.resources(), lobby: this.lobby.slice(0, 30), lanes: jobs.map(j => ({ requestId: j.id, workerId: j.worker.workerId, highwayId: j.worker.kind === 'highway' ? j.worker.id : null, laneId: j.laneId,
       pageId: j.lease?.pageId || j.autoPlan?.pageId, agentId: j.lease?.agentId || j.autoPlan?.agentId, label: j.lease?.label || j.autoPlan?.label || j.label, state: j.state, automatic: !!j.autoPlan || j.action === 'cmd-batch',
       blockedReason: this.blocked(j) || (j.state === 'queued' ? 'waiting-worker-turn' : null), waitMs: (j.startedAt || now) - j.enqueuedAt, bytes: j.bytes })),
-      reservations: records.sort((a, b) => Number(b.state === 'held') - Number(a.state === 'held') || b.admittedAt - a.admittedAt).slice(0, 64).map(({ nodeIds, roots, dependencies, ...r }) => ({ ...r, roots: (roots || []).slice(0, 8), omittedRoots: Math.max(0, (nodeIds?.length || 0) - Math.min(8, roots?.length || 0)), nodeCount: nodeIds?.length || 0 })),
-      fileHolds: [...this.journal.fileHolds.values()].filter(r => r.state === 'held'), omittedReservations: Math.max(0, records.length - 64), recent: this.receipts.slice(0, 20),
-      latency: { scope: 'last 50 completed requests in this daemon session', count: this.receipts.length,
+      reservations: mapped.sort((a, b) => Number(b.state === 'held') - Number(a.state === 'held') || b.admittedAt - a.admittedAt).slice(0, 64).map(({ nodeIds, roots, dependencies, ...r }) => ({ ...r, roots: (roots || []).slice(0, 8), omittedRoots: Math.max(0, (nodeIds?.length || 0) - Math.min(8, roots?.length || 0)), nodeCount: nodeIds?.length || 0 })),
+      earlierCommitted: [...earlier].map(([fileKey, count]) => ({ fileKey, count })),
+      sketches: [...this.workers.values()].flatMap(w => w.bridge.connected() ? w.bridge.sketches().slice(-8).map(s => ({ workerId: w.workerId, fileKey: w.fileKey, ...s })) : []),
+      timeline: this.receipts.filter(r => r.completedAt >= now - 60000).map(r => ({ id: r.id, workerId: r.workerId, highwayId: r.highwayId || null, laneId: r.laneId, label: r.label || null, op: r.op,
+        category: r.category || null, outcome: r.outcome, start: r.completedAt - n0(r.executionMs), end: r.completedAt })),
+      fileHolds: [...this.journal.fileHolds.values()].filter(r => r.state === 'held'), omittedReservations: Math.max(0, mapped.length - 64), recent: this.receipts.slice(0, 50),
+      latency: { scope: 'last 50 completed requests in this daemon session', count: Math.min(50, this.receipts.length),
         queueP95Ms: this.percentile('queueMs'), executionP95Ms: this.percentile('executionMs') } });
     return snapshot;
   }
-  percentile(field) { const s = this.receipts.map(r => r[field]).sort((a, b) => a - b); return s.length ? s[Math.ceil(s.length * .95) - 1] : null; }
+  currentOf(channel, now) {
+    const a = channel.active;
+    return a ? { requestId: a.id, wireId: a.wireId, laneId: a.laneId, pageId: a.lease?.pageId || a.autoPlan?.pageId, label: a.lease?.label || a.autoPlan?.label || a.label,
+      phase: a.phase || a.state, executionMs: now - a.startedAt, progress: channel.bridge.pending.get(a.wireId)?.progress || null,
+      op: a.action === 'cmd' ? short(a.payload.cmd.op) : 'batch', category: categoryOf(a.action, a.payload.cmd),
+      agentId: a.lease?.agentId || a.autoPlan?.agentId || channel.agentId || null, target: channel.bridge.targetFor(a.wireId) } : null;
+  }
+  // Lobby events (highways opened, resumed, closed, refused), newest first.
+  noteLobby(event) { this.lobby.unshift({ at: Date.now(), ...event }); this.lobby.length = Math.min(50, this.lobby.length); this.schedulePublish(); }
+  percentile(field) { const s = this.receipts.slice(0, 50).map(r => r[field]).filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[Math.ceil(s.length * .95) - 1] : null; }
   schedulePublish(worker) {
     if (this.closed) return;
     if (worker) this.progressWorkers.add(worker); else this.uiDirty = true;
@@ -447,13 +560,21 @@ export class BridgeCoordinator {
     const job = worker.active, progress = worker.bridge.pending.get(job?.wireId)?.progress;
     if (!job || !progress) return;
     const wire = JSON.stringify({ type: 'worker-progress', schema: 1, coordinatorEpoch: this.epoch, sequence: ++this.seq,
-      workerId: worker.workerId, sessionEpoch: worker.sessionEpoch, requestId: job.id, wireId: job.wireId, progress });
+      workerId: worker.workerId, highwayId: worker.kind === 'highway' ? worker.id : null, sessionEpoch: worker.sessionEpoch, requestId: job.id, wireId: job.wireId, progress });
     for (const w of this.workers.values()) if (w.visible && w.bridge.connected() && w.bridge.session.ws.bufferedAmount < 65536) w.bridge.session.ws.send(wire);
   }
+  telemetryWire(compact) {
+    const snapshot = this.snapshot(compact); let wire = JSON.stringify(snapshot);
+    for (const trim of TRIMS) { if (Buffer.byteLength(wire) <= TELEMETRY_BYTES) break; trim(snapshot); wire = JSON.stringify(snapshot); }
+    return Buffer.byteLength(wire) <= TELEMETRY_BYTES ? wire : null;
+  }
   publish(only) {
+    const wires = {};
     for (const w of only ? [only] : this.workers.values()) if (w.visible && w.bridge.connected()) {
-      const ws = w.bridge.session.ws;
-      if (ws.bufferedAmount < 65536) { const wire = JSON.stringify(this.snapshot(w.mode === 'compact')); if (Buffer.byteLength(wire) <= 131072) ws.send(wire); }
+      const ws = w.bridge.session.ws, mode = w.mode === 'compact' ? 'compact' : 'full';
+      if (ws.bufferedAmount >= 65536) continue;
+      if (!(mode in wires)) wires[mode] = this.telemetryWire(mode === 'compact');
+      if (wires[mode]) ws.send(wires[mode]);
     }
   }
   close() { this.closed = true; clearInterval(this.timer); clearTimeout(this.uiTimer); this.uiTimer = null; this.progressWorkers.clear(); for (const ws of this.handshakes) ws.close(); for (const w of this.workers.values()) w.bridge.close(); }
