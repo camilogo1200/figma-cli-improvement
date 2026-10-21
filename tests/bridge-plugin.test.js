@@ -495,7 +495,7 @@ test('the window always opens as the corner banner and presets grow it upward fr
   } });
   await flush();
   // A saved console size is ignored: every session starts as the stealth banner.
-  assert.deepEqual(JSON.parse(JSON.stringify(h.figma.shown)), { width: 300, height: 40, themeColors: true, position: { x: 24, y: 716 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(h.figma.shown)), { width: 400, height: 40, themeColors: true, position: { x: 24, y: 716 } });
   assert.equal(h.figma.markup, '<body data-mode="stealth" data-theme="ios">');
   await h.figma.ui.onmessage({ type: 'identify' });
   assert.equal(h.messages.find(m => m.type === 'identity').uiMode, 'stealth');
@@ -558,7 +558,7 @@ test('jobs report where they read or write; pages are sketched between jobs, nev
 
 test('storage failure still opens the banner', async () => {
   const h = harness({ clientStorage: { async getAsync() { throw new Error('unavailable'); } } });
-  await flush(); assert.equal(h.figma.shown.width, 300); assert.equal(h.figma.shown.themeColors, true);
+  await flush(); assert.equal(h.figma.shown.width, 400); assert.equal(h.figma.shown.themeColors, true);
 });
 
 test('theme restores independently of size and rejects unsupported stored values', async () => {
@@ -568,7 +568,7 @@ test('theme restores independently of size and rejects unsupported stored values
     await h.figma.ui.onmessage({ type: 'identify' });
     const identity = h.messages.find(m => m.type === 'identity');
     assert.equal(identity.uiTheme, expected); assert.equal(identity.uiMode, 'stealth');
-    assert.equal(h.figma.shown.width, 300);
+    assert.equal(h.figma.shown.width, 400);
   }
 });
 

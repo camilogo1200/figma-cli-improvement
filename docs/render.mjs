@@ -42,7 +42,7 @@ f.src='ui.html#'+p.scene;</script></body></html>`;
 // are captured directly at the console's size: the scroll position only settles reliably
 // in a top-level page.
 const scenes = [
-  { name: 'console-banner', window: [300, 40], page: [860, 360], canvas: true, scene: 'mode=stealth' },
+  { name: 'console-banner', window: [400, 40], page: [860, 360], canvas: true, scene: 'mode=stealth' },
   { name: 'console-compact', window: [360, 300], page: [400, 380], scene: 'mode=compact' },
   { name: 'console-overview', page: [1060, 904], scene: 'mode=console&tab=overview' },
   { name: 'console-highways', page: [1060, 904], scene: 'mode=console&tab=highways&scroll=section-title' },

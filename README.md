@@ -816,7 +816,7 @@ far each job has progressed (measured, never estimated) and every outcome.
 ![The banner in the canvas's bottom-left corner](docs/images/console-banner.png)
 
 Every session **starts as the banner** in the canvas's bottom-left corner: one line,
-`figma CLI - <status> - <port>`, and **Show details**. Black at 75 % opacity, white text, rounded
+`Figma CLI Ultimate - <status> - ports:<port>`, and **Show details**. Black at 75 % opacity, white text, rounded
 border. The status is Connected, Working, Needs review, Connecting, Connect this computer or
 Disconnected.
 
@@ -827,7 +827,7 @@ the banner.
 
 | View | Size | Shows |
 |---|---|---|
-| **Banner** | 300 × 40 | Product, status and port, and **Show details** |
+| **Banner** | 400 × 40 | Product, status and port, and **Show details** |
 | **Compact** | 360 × 300 | Local job, resolved target page, node progress, elapsed time, running files, waiting jobs, held areas, connected files, admitted bytes. It subscribes only to a small summary |
 | **Standard** | 360 × 600 | The full sections in a narrow column |
 | **Console** | 1060 × 904 | The full dashboard with side navigation, charts and maps |

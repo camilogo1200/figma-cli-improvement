@@ -12,7 +12,7 @@
 
 // The window always opens as the stealth banner in the viewport's bottom-left
 // corner; presets and edge drags resize it. Storage failure must not stop work.
-var UI_MODES = { stealth: [300, 40], compact: [360, 300], standard: [360, 600], console: [1060, 904] };
+var UI_MODES = { stealth: [400, 40], compact: [360, 300], standard: [360, 600], console: [1060, 904] };
 var UI_MIN = [300, 200], UI_MAX = [2400, 1800];
 var uiMode = 'stealth', uiSize = UI_MODES.stealth;
 var UI_THEMES = ['ios', 'signal'];
@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.0.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = 'db3e2db86449fcc61165d146'; // stamped by bridge/launcher.mjs build
+var BUILD = 'd00648559964b140392dd5dd'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;

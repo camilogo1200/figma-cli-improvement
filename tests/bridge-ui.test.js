@@ -469,11 +469,11 @@ test('the stealth banner shows only product, status and port, and opens the deta
   const h=harness(),ws=h.connect();
   h.main({type:'ui-mode',mode:'stealth'});
   assert.equal(h.document.body.dataset.mode,'stealth');
-  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Connected - 3049');
+  assert.equal(h.elements.get('stealth-text').textContent,'Figma CLI Ultimate - Connected - ports:3049');
   assert.deepEqual([...h.elements.get('stealth').querySelectorAll('button')].map(b=>b.textContent),['Show details']);
-  h.main(snapshot());assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Working - 3049');
+  h.main(snapshot());assert.equal(h.elements.get('stealth-text').textContent,'Figma CLI Ultimate - Working - ports:3049');
   h.main({type:'batch-result',session:1,id:'job-1',outcome:'partial',results:[{success:false,outcome:'uncertain'}]});
-  assert.equal(h.elements.get('stealth-text').textContent,'figma CLI - Needs review - 3049');
+  assert.equal(h.elements.get('stealth-text').textContent,'Figma CLI Ultimate - Needs review - ports:3049');
   h.elements.get('stealth-details').click();
   assert.equal(h.document.body.dataset.mode,'compact');assert.equal(h.messages.at(-1).type,'ui-mode');assert.equal(h.messages.at(-1).mode,'compact');
   h.document.click({target:h.document.querySelector('#compact [data-window="stealth"]')});
