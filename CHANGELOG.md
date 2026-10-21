@@ -9,6 +9,15 @@ First release packaged on its own as **figma-cli-ultimate**.
   `doctor`, `status`, `start`/`stop`/`restart`, `autostart`, `register`, `approve`, `pair`,
   `uninstall`, and file commands (`files`, `info`, `pages`, `find`, `children`, `tree`, `export`,
   `send`, `layout`, `cancel`) with `--file NAME|KEY`.
+- Agent skills for Claude Code and Codex in `skills/`: **figma-ultimate** (files, reading, building
+  with `layout` and `send`, verifying, the failure contract, highways) and **figma-ultimate-setup**
+  (`doctor`, first-time setup, pairing, what needs the user's OK).
+- `figma-ultimate skills install [--claude] [--codex] [--user|--project] [--force]` copies them into
+  `~/.claude/skills` and `~/.agents/skills` (default) or the current folder's `.claude/skills` and
+  `.agents/skills`. Running it again updates untouched copies and leaves edited ones alone unless
+  `--force`.
+- CLI errors end with the outcome and request id (`[kind] · outcome: … · request: …`), so a caller
+  knows whether it may retry.
 - Pairing approval in the terminal (the Windows dialog remains when no terminal is waiting).
 - Optional automatic plugin registration in Figma Desktop's settings (`--register-figma`).
 - Package exports: `figma-cli-ultimate` (file-bound client) and `figma-cli-ultimate/client`.

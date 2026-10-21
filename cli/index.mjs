@@ -10,6 +10,7 @@ import { buildIdentity, PROJECT_ROOT } from '../src/lib/bridge-build.js';
 import { STATE_DIR, previousStatePending } from '../src/lib/bridge-state.js';
 import { retirePrevious, previousDaemon, PREVIOUS_PORT } from './previous-version.mjs';
 import { MANIFEST_PATH, figmaSettingsPath, readFigmaSettings, registration, registerInFigma, copyToClipboard } from './figma-plugins.mjs';
+import { installSkills, bundledSkills } from './skills.mjs';
 
 const VERSION = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf8')).version;
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -39,6 +40,12 @@ Setup and lifecycle
   figma-ultimate approve      Approve a waiting plugin connection in this terminal
   figma-ultimate pair         Print a two-minute manual pairing code
   figma-ultimate uninstall    Turn off automatic start and stop the bridge
+
+Agent skills (Claude Code and Codex)
+  figma-ultimate skills install   For this user: ~/.claude/skills and ~/.agents/skills (--user)
+      --project                   into this folder's .claude/skills and .agents/skills instead
+      --claude | --codex          only one of the two agents (default: both)
+      --force                     also replace copies that were edited by hand
 
 Working with files (JSON output; --file NAME|KEY when several files are connected)
   figma-ultimate files                 Connected files
@@ -249,6 +256,26 @@ async function status(flags) {
   ok(`Bridge on 127.0.0.1:${fig.PORT} · ${files.length ? quoted(files) : 'no files connected'} · ${snapshot.highways.length} highway${snapshot.highways.length === 1 ? '' : 's'}${snapshot.held ? ` · ${snapshot.held} held for review` : ''}`);
 }
 
+const SKILL_STATES = { installed: 'installed', updated: 'updated', unchanged: 'up to date', replaced: 'replaced the edited copy', modified: 'edited by hand, left as it is' };
+function skills(rest, flags) {
+  if (rest[0] !== 'install') {
+    (rest[0] ? bad : note)('Use: figma-ultimate skills install [--claude] [--codex] [--user|--project] [--force]');
+    hint('Bundled skills: ' + bundledSkills().map(s => s.name).join(', '));
+    if (rest[0]) process.exitCode = 1;
+    return;
+  }
+  if (flags.user && flags.project) throw new Error('Choose --user or --project, not both.');
+  const both = !flags.claude && !flags.codex;
+  const results = installSkills({ claude: both || !!flags.claude, codex: both || !!flags.codex, scope: flags.project ? 'project' : 'user', force: !!flags.force, version: VERSION });
+  for (const r of results) {
+    (r.state === 'modified' ? bad : ok)(`${r.agent} · ${r.skill}: ${SKILL_STATES[r.state]}  ${paint(90, r.dir)}`);
+    if (r.edited?.length) hint('Edited: ' + r.edited.join(', '));
+    else if (r.state === 'modified') hint('This folder was not installed by figma-ultimate.');
+  }
+  if (results.some(r => r.state === 'modified')) { hint('Run again with --force to replace it; the edits are lost.'); process.exitCode = 1; }
+  if (results.some(r => ['installed', 'updated', 'replaced'].includes(r.state))) note('New Claude Code and Codex sessions load them.');
+}
+
 async function fileCommand(sub, rest, flags) {
   switch (sub) {
     case 'files': return (await connectedFiles()).map(f => ({ file: f.file, fileKey: f.fileKey, page: f.page, pageId: f.pageId, busy: !!f.current, needsReview: !!f.quarantine }));
@@ -323,6 +350,7 @@ export async function main(args = process.argv.slice(2)) {
     }
     if (sub === 'register') { await registerStep({ figmaSettings: !!flags['figma-settings'] }); return; }
     if (sub === 'approve') { await waitForPlugin({ announce: false }); return; }
+    if (sub === 'skills') { skills(rest, flags); return; }
     if (sub === 'uninstall') {
       if (process.platform === 'win32' && autostartState() === 'on') ok(await autostart(false));
       const r = await stop(); r.stopped ? ok('Bridge stopped') : note('Bridge was not running');
@@ -335,7 +363,8 @@ export async function main(args = process.argv.slice(2)) {
     if (out === undefined) { console.error(`Unknown command "${sub}".\n`); console.log(HELP); process.exitCode = 1; return; }
     console.log(JSON.stringify(out, null, 2));
   } catch (e) {
-    console.error(paint(31, '✗ ') + e.message + (e.kind ? ` [${e.kind}]` : ''));
+    // The outcome says what a caller may do next: only not-started and rolled-back may be retried.
+    console.error(paint(31, '✗ ') + [e.message + (e.kind ? ` [${e.kind}]` : ''), e.outcome && `outcome: ${e.outcome}`, e.requestId && `request: ${e.requestId}`].filter(Boolean).join(' · '));
     if (e.kind === 'daemon-down') console.error('  The bridge is not running. Run figma-ultimate setup (first time) or figma-ultimate start.');
     if (e.results) console.error(JSON.stringify(e.results.map((r, index) => ({ index, success: r.success,
       created: r.result?.created?.map(n => ({ id: n.id, name: n.name })), error: r.error, kind: r.kind, outcome: r.outcome, details: r.details })), null, 2));

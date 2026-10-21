@@ -171,6 +171,21 @@ figma-ultimate layout screens.json         # {"specs":[{"name":"Home","w":390,"h
 figma-ultimate export 12:34 home.png
 ```
 
+### Use it from Claude Code or Codex
+
+```bash
+figma-ultimate skills install              # for you: ~/.claude/skills and ~/.agents/skills
+figma-ultimate skills install --project    # for one repository: .claude/skills and .agents/skills
+```
+
+Two [agent skills](skills/) teach the agent this bridge. **figma-ultimate** covers picking the file,
+reading before writing, building with `layout` and `send`, checking the result with `export`, and
+what it may and may not do after a failure. **figma-ultimate-setup** starts every problem with
+`doctor` and lists the steps that need your OK. New Claude Code and Codex sessions load them; then
+ask in plain words, for example "add a checkout screen to the open Figma file". `--claude` or
+`--codex` installs for one agent only. Running it again updates the copies it installed and leaves a
+copy you edited alone unless you add `--force`.
+
 ### Two agents, one file
 
 In your own project, add the client (`npm install github:camilogo1200/figma-cli-improvement`), then:
@@ -400,6 +415,7 @@ every outcome with its target and size. See [§6](#6-the-plugin-ui-banner-and-wo
 | `bin/figma-ultimate.mjs`, `cli/index.mjs` | The `figma-ultimate` command: setup, doctor, lifecycle, file commands |
 | `cli/figma-plugins.mjs` | Plugin registration in Figma Desktop’s settings (guided or automatic) |
 | `cli/previous-version.mjs` | One-time upgrade from an earlier installation of this bridge |
+| `cli/skills.mjs`, `skills/` | The agent skills for Claude Code and Codex, and `figma-ultimate skills install` |
 | `bridge/launcher.mjs` | Build stamping and the guarded daemon lifecycle (used by the CLI and the companion) |
 | `bridge/companion.mjs`, `*.ps1` | Windows sign-in companion and pairing approval dialog |
 
@@ -433,7 +449,7 @@ every outcome with its target and size. See [§6](#6-the-plugin-ui-banner-and-wo
 | A tag or branch | `npm install -g github:camilogo1200/figma-cli-improvement#<tag>` | Pinning a release |
 | **Clone** | `git clone https://github.com/camilogo1200/figma-cli-improvement.git`<br>`cd figma-cli-improvement && npm ci && npm run setup` | Changing the code. The clone folder is the installation |
 
-The package ships only what runs: 30 files, about 145 kB, one dependency (`ws`).
+The package ships only what runs, plus the agent skills: 36 files, about 160 kB, one dependency (`ws`).
 
 ### 4.3 What `figma-ultimate setup` does
 
@@ -502,6 +518,7 @@ version (`--json` for scripts).
 
 - **Update:** run the install command again, then `figma-ultimate setup`. A new build restarts the
   bridge; close and reopen the plugin in each open file (it shows a build mismatch until you do).
+  Run `figma-ultimate skills install` again to update the agent skills.
 - **Restart:** `figma-ultimate restart`. Guarded: it refuses while work is active or uncertain and never
   kills a process by a PID it read from a file.
 - **Uninstall:** `figma-ultimate uninstall` turns off automatic start and stops the bridge. Then remove
@@ -535,6 +552,7 @@ not the folder, so a global install and a local install of the same release shar
 | `approve` | Approve a waiting plugin connection in this terminal |
 | `pair` | Two-minute manual pairing code |
 | `uninstall` | Turn off automatic start and stop the bridge |
+| `skills install [--project] [--claude] [--codex] [--force]` | Install the agent skills for Claude Code and Codex ([First commands](#use-it-from-claude-code-or-codex)) |
 | `files`, `info`, `pages`, `find`, `children`, `tree`, `export`, `send`, `layout`, `cancel` | Work with a file ([§5.1](#51-from-the-terminal)) |
 | `highways`, `lanes`, `workers`, `diagnostics` | Inspect the coordinator (JSON) |
 
