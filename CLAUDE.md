@@ -16,6 +16,7 @@ CLI. README.md is the full documentation; this file is the short version for age
 | "run these commands" | `figma-ultimate send commands.json` (array = one batch, ≤128) |
 | "screenshot this" | `figma-ultimate export <nodeId> out.png` |
 | several files open | add `--file "<name part>"` or `--file <fileKey>` |
+| "use it from Claude Code / Codex" | `figma-ultimate skills install` (`--project` for this folder) |
 
 Rules:
 
@@ -46,5 +47,8 @@ Rules:
   `DEFAULT_PORT` there and `DAEMON_PORT` in `plugin/ui.html`. Change both sides together.
 - Layout: `bin/` + `cli/` (the CLI), `bridge/` (client, launcher, companion), `src/` (daemon and
   coordinator), `plugin/` (Figma plugin), `docs/` (diagram sources, images, renderer), `tests/`.
+- `skills/` holds the agent skills that `figma-ultimate skills install` copies (one folder per skill,
+  short SKILL.md, detail in `references/`). When an op, spec field, CLI command or outcome changes,
+  update them too; `tests/bridge-setup.test.js` checks their frontmatter and links.
 - `cli/previous-version.mjs` and `PREVIOUS_STATE_DIR` in `src/lib/bridge-state.js` are the only places
   that name the pre-3.0 installation; they exist to upgrade it.
