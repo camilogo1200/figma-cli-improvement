@@ -2,62 +2,63 @@
 
 ## Reporting a vulnerability
 
-Report privately, not through the public issue tracker.
+Report privately, not through the public issue tracker: use
+[GitHub private vulnerability reporting](https://github.com/camilogo1200/figma-cli-improvement/security/advisories/new).
+If that link is not available, open an issue that asks for a private contact, without details.
 
-- **Preferred:** [GitHub private vulnerability reporting](https://github.com/silships/figma-cli/security/advisories/new). It is enabled on this repository and gives you a private thread plus a CVE path if one is warranted.
-- **Email:** sil@intodesignsystems.com
-
-Useful in a report: what you did, what happened, which version (`figma-cli --version`), your OS, and which connection mode you were in (Yolo, Browser or Safe).
-
-### What to expect
-
-| Step | Timeframe |
-|---|---|
-| Acknowledgement that the report arrived | within 3 working days |
-| First assessment, whether it is reproducible and how severe | within 7 working days |
-| Fix released, or an explanation why it will not be | depends on severity, communicated in the thread |
-
-This is a solo-maintained project, so those are honest targets, not a contractual SLA. If you get no answer within a week, send a reminder to the address above.
-
-Please give me a chance to ship a fix before you publish. Credit in the release notes if you want it.
+Useful in a report: what you did, what happened, the version (`figma-ultimate version`), your OS and
+your Figma Desktop version. Please allow time for a fix before publishing. Credit in the release
+notes if you want it.
 
 ## Supported versions
 
-Fixes go into the latest release on npm (`figma-ds-cli`). Older versions are not backported.
+Fixes go into the latest release on the default branch. Older versions are not backported.
 
-## What this tool does to your machine
+## What figma-cli-ultimate does on your machine
 
-Security review of figma-cli is mostly a question of what the three connection modes touch, so here it is in full. This is also the section to point at when a company asks before approving the tool.
+This is the section to point at when someone asks before approving the tool.
 
-### Yolo Mode (`figma-cli connect`)
+### The daemon
 
-- **Modifies the Figma Desktop app.** It rewrites one string in Figma's `app.asar` (`removeSwitch("remote-debugging-port")` becomes `removeSwitch("remote-debugXing-port")`), which stops Figma from stripping its own remote-debugging flag. Nothing else in the app is changed, no code is injected.
-- Figma then listens for the Chrome DevTools Protocol on **127.0.0.1:9222** (`FIGMA_PORT` overrides). CDP has no authentication, so any local process that can reach that port can drive Figma. Do not expose it beyond localhost.
-- A Figma update replaces `app.asar` and reverts the patch. Re-running `connect` re-applies it.
-- On macOS this needs the "App Management" permission for your terminal.
+- `src/daemon.js` listens on **127.0.0.1:3049** only (the lobby) and on one OS-assigned loopback port
+  per open highway. Nothing listens on other interfaces.
+- Every HTTP request needs the daemon token from `~/.figma-cli-ultimate/.daemon-token` (created with
+  mode 600) and the exact build fingerprint. A highway port accepts only its own 32-byte ticket.
+- It **never evaluates code**. It accepts structured JSON commands (`create`, `update`, `find`, …)
+  that the plugin interprets against the Figma Plugin API. `eval` and `render` requests are refused.
+- It exits after an hour without activity unless the companion restarts it.
 
-### Browser Mode (`figma-cli connect --browser`)
+### The plugin
 
-- **Does not touch the Figma Desktop app.** It launches Chrome/Edge/Brave/Chromium with remote debugging on the same local port, using a dedicated persistent profile so your everyday browser profile and its cookies stay separate.
-- Same caveat as above: the CDP port is unauthenticated and local.
+- Runs only after you start it from **Plugins → Development** in a file. It cannot start itself.
+- Connects only to the local daemon. Its manifest declares network access because highway ports are
+  assigned at runtime; the window dials `127.0.0.1` only.
+- A plugin window becomes a worker only after this computer is **paired**: you approve a six-digit
+  number in the terminal or in a Windows dialog, or paste a two-minute code. The daemon stores only a
+  hash of the pairing credential. **Connection settings → Forget this computer** revokes it.
+- It reads the private plugin API's file key to make sure each command reaches the file it names.
+- Rollback removes only nodes the job itself created, never pre-existing ones.
 
-### Safe Mode (`figma-cli connect --safe`)
+### Setup
 
-- **Modifies nothing.** Communication goes through a Figma plugin you run yourself from Plugins > Development. Choose this one when patching or a debug port is not acceptable on the machine.
+- `figma-ultimate setup` writes `~/.figma-cli-ultimate`, starts the daemon, and on Windows adds one
+  shortcut to your Startup folder (**Figma CLI Ultimate**) that runs `bridge/start-companion.ps1`
+  hidden at sign-in. `figma-ultimate autostart off` removes it.
+- With `--register-figma` (or `register --figma-settings`) it edits Figma Desktop's `settings.json`
+  to register the plugin, only while Figma is closed, after saving a timestamped backup next to it.
+  Without that flag it never writes Figma's files.
+- When upgrading an earlier installation of this bridge from the same folder, it turns off that
+  installation's automatic start, asks its idle daemon to stop and copies its pairings and journal.
+  It never kills a process by PID.
 
-### The local daemon
+### Data
 
-- `src/daemon.js` binds to **127.0.0.1:3456** (`DAEMON_PORT` overrides) and is never exposed to other hosts. It holds the CDP connection so commands don't pay reconnect cost, and it exits after an idle timeout.
-- It **executes JavaScript inside the open Figma file**. That is the whole point of `eval` and `render`, and it means the daemon is as trusted as whatever hands it code. If an AI assistant drives the CLI, that assistant can run arbitrary Plugin API code against your file. Treat scripts you did not write the way you treat any other script you are about to run.
-
-### Data and credentials
-
-- No telemetry, no analytics, no phone-home. Outbound requests happen only where a command needs them: `<Icon>` fetches the SVG from the Iconify API, `recreate-url` / `screenshot-url` / Storybook import load the URL you passed, image props load the image URL you passed, and the background-removal command uploads the exported image to remove.bg with your own API key. Nothing leaves the machine on its own.
-- **No Figma API key is involved.** The tool never asks for one and never sees your Figma token.
-- Credentials for optional plugins (for example a voice API key) go into the macOS Keychain, or on Linux into `~/.config/figma-cli/credentials` with mode 600.
+- No telemetry, analytics or outbound requests. Nothing leaves the machine.
+- No Figma API key or account token is involved.
+- The console shows where work happens and how much came back, never the contents of query results
+  or images.
 
 ## Scope
 
-In scope: anything in this repository, including the patch mechanism, the daemon, the plugin, and the way command input reaches Figma.
-
-Out of scope: vulnerabilities in Figma Desktop itself (report those to Figma), and the inherent fact that Yolo and Browser mode open an unauthenticated local CDP port, which is documented above and is how the Chrome DevTools Protocol works.
+In scope: the daemon, the plugin, the CLI and the companion in this repository. Out of scope: Figma
+Desktop itself, and the original figma-cli (report those to their maintainers).

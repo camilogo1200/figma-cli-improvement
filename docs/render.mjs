@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Regenerates the README images with headless Chrome or Edge:
-//   - console-*.png   →  the real plugin/ui.html, driven by console-stub.js with sample data
-//   - diagrams/*.svg  →  docs/insula/<name>.png (after the console, which hero.svg embeds)
-// No daemon, plugin or network connection is involved. Run: node docs/insula/render.mjs
+//   - console-*.png   →  docs/images/: the real plugin/ui.html, driven by console-stub.js with sample data
+//   - diagrams/*.svg  →  docs/images/<name>.png (after the console, which hero.svg embeds)
+// No daemon, plugin or network connection is involved. Run: npm run docs
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const here = dirname(fileURLToPath(import.meta.url)), root = join(here, '..', '..');
+const here = dirname(fileURLToPath(import.meta.url)), root = join(here, '..'), images = join(here, 'images');
 const browser = [process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(p => p && existsSync(p));
 if (!browser) throw new Error('Set CHROME_PATH to a Chrome or Edge executable.');
@@ -62,7 +62,7 @@ if (scenes.length) {
     for (const s of scenes) {
       const url = s.window ? pathToFileURL(join(work, 'frame.html')).href + `#w=${s.window[0]}&h=${s.window[1]}&canvas=${s.canvas ? 1 : 0}&scene=${encodeURIComponent(s.scene)}`
         : pathToFileURL(join(work, 'ui.html')).href + '#' + s.scene;
-      shot(url, s.page, join(here, s.name + '.png'), 1.5);
+      shot(url, s.page, join(images, s.name + '.png'), 1.5);
     }
   } finally { if (process.env.KEEP_DOCS_WORK) console.log('kept', work); else rmSync(work, { recursive: true, force: true }); }
 }
@@ -71,5 +71,5 @@ if (scenes.length) {
 for (const file of readdirSync(join(here, 'diagrams')).filter(f => f.endsWith('.svg') && wanted(f))) {
   const svg = readFileSync(join(here, 'diagrams', file), 'utf8'), [, width, height] = svg.match(/width="(\d+)" height="(\d+)"/);
   const scale = +(svg.match(/data-scale="([\d.]+)"/)?.[1] ?? 2);   // the photo-heavy hero uses 1.5 to stay small
-  shot(pathToFileURL(join(here, 'diagrams', file)).href, [+width, +height], join(here, file.replace(/\.svg$/, '.png')), scale, ['--default-background-color=00000000']);
+  shot(pathToFileURL(join(here, 'diagrams', file)).href, [+width, +height], join(images, file.replace(/\.svg$/, '.png')), scale, ['--default-background-color=00000000']);
 }

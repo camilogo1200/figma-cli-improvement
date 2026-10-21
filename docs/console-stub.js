@@ -106,7 +106,7 @@
     receive(msg) { this.onmessage?.({ data: JSON.stringify(msg) }); }
     send(text) {
       let msg; try { msg = JSON.parse(text); } catch { return; }
-      if (!/:3456\//.test(this.url) || msg.type !== 'hello') return;
+      if (!/:3049\//.test(this.url) || msg.type !== 'hello') return;
       setTimeout(() => {
         this.receive({ type: 'ready', workerId: 'w1', sessionEpoch: 's1', coordinatorEpoch: 'docs', credential: 'docs-credential' });
         const tick = () => { this.receive(telemetry(++sequence)); apply(); };

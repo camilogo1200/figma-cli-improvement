@@ -35,7 +35,7 @@
   <rect x="370" y="104" width="540" height="676" rx="16" fill="#f4f6fb" stroke="#d1d8e5"/>
   <text class="panelTitle" x="392" y="132">DAEMON · ONE NODE PROCESS</text>
   <rect x="392" y="148" width="496" height="82" rx="12" fill="#e6efff" stroke="#0066cc" stroke-width="1.5"/>
-  <text class="h" x="412" y="178">Lobby · 127.0.0.1:3456</text>
+  <text class="h" x="412" y="178">Lobby · 127.0.0.1:3049</text>
   <text class="s" x="412" y="201">Checks the token and exact build, opens and closes highways,</text>
   <text class="s" x="412" y="219">answers status, coordinate and lifecycle requests.</text>
 

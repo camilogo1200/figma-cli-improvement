@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" data-scale="1.5" width="1600" height="640" viewBox="0 0 1600 640" font-family="Segoe UI Variable Display, Segoe UI, Inter, Helvetica, Arial, sans-serif">
-  <!-- README hero. Embeds ../console-highways.png, so render.mjs renders the console scenes first. -->
+  <!-- README hero. Embeds ../images/console-highways.png, so render.mjs renders the console scenes first. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#070b18"/><stop offset=".55" stop-color="#0e1530"/><stop offset="1" stop-color="#181238"/>
@@ -60,7 +60,7 @@
     <rect x="900" y="118" width="640" height="14" fill="#1f2333"/>
     <circle cx="922" cy="114" r="5" fill="#ff5f57"/><circle cx="940" cy="114" r="5" fill="#febc2e"/><circle cx="958" cy="114" r="5" fill="#28c840"/>
     <text class="wtitle" x="1220" y="119" text-anchor="middle">figma-cli-ultimate · Worker console</text>
-    <image clip-path="url(#screen)" href="../console-highways.png" xlink:href="../console-highways.png" x="900" y="132" width="640" height="546" preserveAspectRatio="xMidYMin slice"/>
+    <image clip-path="url(#screen)" href="../images/console-highways.png" xlink:href="../images/console-highways.png" x="900" y="132" width="640" height="546" preserveAspectRatio="xMidYMin slice"/>
 
     <!-- Floating card: taking turns -->
     <g filter="url(#soft)">
@@ -95,7 +95,7 @@
     <!-- The real banner the plugin starts as -->
     <rect x="80" y="452" width="420" height="44" rx="12" fill="#000000" fill-opacity=".75" stroke="#ffffff" stroke-opacity=".35"/>
     <circle cx="100" cy="474" r="4.5" fill="#34c759"/>
-    <text class="banner" x="114" y="479">figma CLI - Connected - 3456</text>
+    <text class="banner" x="114" y="479">figma CLI - Connected - 3049</text>
     <rect x="378" y="461" width="110" height="26" rx="8" fill="#ffffff" fill-opacity=".14" stroke="#ffffff" stroke-opacity=".3"/>
     <text class="btn" x="433" y="479" text-anchor="middle">Show details</text>
 

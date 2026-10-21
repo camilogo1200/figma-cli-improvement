@@ -57,7 +57,7 @@
   <rect x="744" y="238" width="104" height="44" rx="10" fill="#eef8f9" stroke="#087f8c"/><text class="h" x="762" y="265">Agent B</text>
   <rect x="744" y="294" width="104" height="44" rx="10" fill="#fdf5ea" stroke="#b56800"/><text class="h" x="762" y="321">Agent C</text>
   <rect x="884" y="182" width="104" height="156" rx="12" fill="#e6efff" stroke="#0066cc"/>
-  <text class="h" x="900" y="210">Lobby</text><text class="s" x="900" y="230">:3456</text><text class="s" x="900" y="262">token,</text><text class="s" x="900" y="280">build,</text><text class="s" x="900" y="298">ports and</text><text class="s" x="900" y="316">tickets</text>
+  <text class="h" x="900" y="210">Lobby</text><text class="s" x="900" y="230">:3049</text><text class="s" x="900" y="262">token,</text><text class="s" x="900" y="280">build,</text><text class="s" x="900" y="298">ports and</text><text class="s" x="900" y="316">tickets</text>
   <rect x="1022" y="182" width="150" height="44" rx="10" fill="#ffffff" stroke="#8b4ad2"/><text class="s" x="1036" y="209">highway A · own port</text>
   <rect x="1022" y="238" width="150" height="44" rx="10" fill="#ffffff" stroke="#087f8c"/><text class="s" x="1036" y="265">highway B · own port</text>
   <rect x="1022" y="294" width="150" height="44" rx="10" fill="#ffffff" stroke="#b56800"/><text class="s" x="1036" y="321">highway C · own port</text>
