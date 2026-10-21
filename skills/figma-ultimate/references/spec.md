@@ -148,19 +148,19 @@ Text with `w` or `wSize: "FILL"` wraps at that width; otherwise it grows to fit 
 ## update
 
 ```json
-{ "op": "update", "id": "12:34", "spec": { "fill": "#FFFFFF", "w": 390, "h": 844 } }
+{ "op": "update", "id": "12:34", "spec": { "fill": "#FFFFFF" } }
 ```
 
 Changes `name`, `fill`, `stroke`, `strokeWidth`, `radius`, `effects`, `opacity`, `visible`, `x`, `y`,
-`w`, `h`, and on text nodes `text` with the text fields above. Anything else (layout, padding,
-children) is not changed by `update`.
+`w`, `h`, and on text nodes the text fields above (with or without `text`). Only the fields you send
+change. Anything else (layout, padding, children) is not changed by `update`.
 
-- **`update` resets the sizing of auto-layout frames:** an axis without `w`/`h` switches to hugging
-  its content. Send the current `w` and `h` (from `tree`) for every axis that should keep its fixed
-  size; a screen frame needs both.
-- On text, `text` rewrites the node: send the `font`, `weight` and `color` you want to keep (otherwise
-  Inter Regular and black), and `w` if it wraps (otherwise it becomes one auto-width line). `size` is
-  kept when omitted.
+- An auto-layout axis without `w`/`h` keeps its sizing: a fixed 390×844 screen stays fixed after a
+  fill-only update. Sending `w` or `h` fixes that axis at the new size.
+- Text keeps its font, colour, size and wrapping unless you send them. A partial font keeps the rest
+  of the current one: `{ "weight": "bold" }` on Poppins Semi Bold gives Poppins Bold. Sending `w`
+  makes the text wrap at that width. If the node's font is not installed, it becomes Inter Regular
+  and the result lists it in `fontFallbacks`.
 - Confirm the id with `tree` first: an update of a missing node fails and holds the file
   ([recovery.md](recovery.md)).
 - Updates to existing nodes are not transactions: a failure can leave some fields changed.
