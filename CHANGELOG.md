@@ -24,6 +24,9 @@ First release packaged on its own as **figma-cli-ultimate**.
 - The plugin id is now `figma-cli-ultimate` (register it again and pair once).
 - Clients accept a daemon of the same build from any install folder.
 - Requires Node.js 20 or newer.
+- `update` changes only the fields its spec names. It no longer turns fixed auto-layout axes into hug
+  when `w`/`h` are left out, and a text update keeps the node's font, colour and wrapping unless they
+  are sent; text fields such as `color` or `size` also apply without `text`.
 
 ### Removed
 - The original figma-cli commands and modes (`render`, `eval`, tokens, blocks, shadcn, extract,

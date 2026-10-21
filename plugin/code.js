@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.0.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = 'ee39b07c06ccf5663858f851'; // stamped by bridge/launcher.mjs build
+var BUILD = 'db3e2db86449fcc61165d146'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -347,10 +347,14 @@ function applyEffects(node, spec) {
   });
 }
 
-async function applyText(node, spec) {
-  node.fontName = resolvedFont(spec);
+// create sets every field, with defaults for the ones left out. update passes
+// { font } (null = keep the node's font) and changes only the fields the spec
+// names, so a text-only update keeps the font, colour and wrapping it had.
+async function applyText(node, spec, update) {
+  if (!update) node.fontName = resolvedFont(spec);
+  else if (update.font) node.fontName = update.font;
   if (spec.size != null) node.fontSize = spec.size;
-  node.characters = String(spec.text == null ? '' : spec.text);
+  if (!update || spec.text != null) node.characters = String(spec.text == null ? '' : spec.text);
 
   if (spec.lineHeight != null) {
     node.lineHeight = typeof spec.lineHeight === 'number'
@@ -377,9 +381,53 @@ async function applyText(node, spec) {
   // will be stretched to FILL by its parent must also wrap, or Figma rejects
   // the sizing change against WIDTH_AND_HEIGHT.
   var willFill = String(spec.wSize || '').toUpperCase() === 'FILL';
-  node.textAutoResize = (spec.w != null || willFill) ? 'HEIGHT' : 'WIDTH_AND_HEIGHT';
+  if (!update || spec.w != null || spec.wSize) node.textAutoResize = (spec.w != null || willFill) ? 'HEIGHT' : 'WIDTH_AND_HEIGHT';
 
-  node.fills = toPaints(spec.color == null ? '#000000' : spec.color);
+  if (!update || spec.color != null) node.fills = toPaints(spec.color == null ? '#000000' : spec.color);
+}
+
+var TEXT_FIELDS = ['text', 'font', 'weight', 'style', 'italic', 'size', 'color', 'lineHeight', 'letterSpacing',
+  'align', 'valign', 'textCase', 'textDecoration', 'w', 'wSize'];
+
+// The fonts a TEXT node already uses (several when its ranges differ).
+function nodeFonts(node) {
+  if (node.fontName && typeof node.fontName === 'object') return [node.fontName];
+  if (typeof node.getRangeAllFontNames === 'function' && node.characters) return node.getRangeAllFontNames(0, node.characters.length);
+  return [];
+}
+
+// The font an update asks for, or null to keep the node's. Parts the spec leaves
+// out come from the current font: { weight: 'bold' } on Poppins stays Poppins,
+// { italic: true } on Bold becomes Bold Italic.
+function updateFont(node, spec) {
+  if (spec.font == null && spec.weight == null && spec.style == null && spec.italic == null) return null;
+  var cur = nodeFonts(node)[0] || FALLBACK;
+  var want = { type: 'TEXT', font: spec.font != null ? spec.font : cur.family };
+  if (spec.weight != null || spec.style != null) {
+    want.weight = spec.weight; want.style = spec.style; want.italic = spec.italic;
+  } else {
+    var base = cur.style.replace(/\s*Italic$/i, '') || 'Regular';
+    var italic = spec.italic != null ? !!spec.italic : /Italic$/i.test(cur.style);
+    want.style = !italic ? base : base === 'Regular' ? 'Italic' : base + ' Italic';
+  }
+  return want;
+}
+
+// Loads what a text update needs before anything changes: the node's own fonts
+// (Figma refuses to edit characters or layout without them) and any new font.
+// A font this machine lacks falls back to Inter Regular, reported like create.
+async function loadTextUpdate(node, spec) {
+  var have = nodeFonts(node), missing = [];
+  for (var i = 0; i < have.length; i++) {
+    try { await figma.loadFontAsync(have[i]); } catch (e) { missing.push(have[i].family + ' ' + have[i].style); }
+    checkCancelled();
+  }
+  var want = updateFont(node, spec);
+  if (want) { var subs = await loadFonts(want); return { font: resolvedFont(want), subs: subs }; }
+  if (!missing.length) return { font: null, subs: [] };
+  await figma.loadFontAsync(FALLBACK);
+  checkCancelled();
+  return { font: FALLBACK, subs: missing };
 }
 
 function applySizing(node, spec) {
@@ -411,6 +459,27 @@ function applySizing(node, spec) {
     var h = spec.h != null ? spec.h : node.height;
     try { node.resize(Math.max(0.01, w), Math.max(0.01, h)); } catch (e) {}
   }
+}
+
+// update: only the axes the spec names (w, h) change. applySizing would make
+// every other axis of an auto-layout frame hug its content.
+function applyNamedSizing(node, spec) {
+  if (spec.w == null && spec.h == null) return;
+  if (!('layoutMode' in node) || node.layoutMode === 'NONE' || node.type === 'SECTION' || node.type === 'TEXT') {
+    applySizing(node, spec);
+    return;
+  }
+  var row = node.layoutMode === 'HORIZONTAL';
+  var primary = (row ? spec.w : spec.h) != null ? 'FIXED' : node.primaryAxisSizingMode;
+  var counter = (row ? spec.h : spec.w) != null ? 'FIXED' : node.counterAxisSizingMode;
+  node.primaryAxisSizingMode = primary;
+  node.counterAxisSizingMode = counter;
+  try {
+    node.resize(Math.max(0.01, spec.w != null ? spec.w : node.width), Math.max(0.01, spec.h != null ? spec.h : node.height));
+  } catch (e) {}
+  // resize() takes both axes; leave the one the spec did not name as it was.
+  node.primaryAxisSizingMode = primary;
+  node.counterAxisSizingMode = counter;
 }
 
 // Only valid once the node is parented into an auto-layout frame.
@@ -785,6 +854,8 @@ var OPS = {
     if (!node) throw new Error('Node not found: ' + cmd.id);
     noteTarget(node, 'write');
     var s = cmd.spec || {};
+    var text = node.type === 'TEXT' && TEXT_FIELDS.some(function (k) { return s[k] != null; });
+    var fonts = text ? await loadTextUpdate(node, s) : null;
 
     if (s.name) node.name = s.name;
     var fills = toPaints(s.fill);
@@ -798,12 +869,11 @@ var OPS = {
     if (s.visible != null) node.visible = !!s.visible;
     if (s.x != null) node.x = s.x;
     if (s.y != null) node.y = s.y;
-    if (s.text != null && node.type === 'TEXT') {
-      await loadFonts(s);
-      await applyText(node, s);
-    }
-    applySizing(node, s);
-    return summarize(node);
+    if (text) await applyText(node, s, fonts);
+    applyNamedSizing(node, s);
+    var out = summarize(node);
+    if (fonts && fonts.subs.length) out.fontFallbacks = fonts.subs;
+    return out;
   },
 
   find: async function (cmd) {

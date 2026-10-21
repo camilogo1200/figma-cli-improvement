@@ -578,6 +578,10 @@ long-running agents should use a highway ([§5.4](#54-highways-one-private-port-
   `text/font/weight/style/size/color`, `lineHeight`, `x/y`, `effects` (DROP_SHADOW, BACKGROUND_BLUR,
   LAYER_BLUR), `opacity`, `clip`. SVG: `{type:'SVG', svg, w}`. It also supports native `SECTION` nodes,
   component instances (`{type:'INSTANCE', of: componentId}`), dashed borders and arrowheads.
+- **`update`** `{op:'update', id, spec}` changes only the fields the spec names: `name`, `fill/stroke`,
+  `strokeWidth`, `radius`, `effects`, `opacity`, `visible`, `x/y`, `w/h`, and on text nodes the text
+  fields. An auto-layout axis without `w`/`h` keeps its sizing, and text keeps its font, colour and
+  wrapping unless `font/weight/style/italic`, `color` or `w` are sent (`{weight:'bold'}` keeps the family).
 - **`image`** `{op:'image', base64}` returns a reusable image hash. Identical bytes reuse the same hash.
 - **`page`** `{op:'page', action:'list'|'create'|'select'|'rename'|'update'}`. Use explicit page IDs as
   parents for page-specific builds; creation never needs the page to be visible.

@@ -661,6 +661,68 @@ test('page updates and flow starts target IDs without changing the visible page'
   const wrong = await h.done(h.send({op:'flowStart',pageId:h.page.id,id:target.id})); assert.equal(wrong.kind,'wrong-page');
 });
 
+test('update keeps the sizing of auto-layout axes the spec does not name', async () => {
+  const h = harness(), screen = h.node(); h.page.appendChild(screen);
+  Object.assign(screen, { layoutMode: 'VERTICAL', primaryAxisSizingMode: 'FIXED', counterAxisSizingMode: 'FIXED', width: 390, height: 844 });
+  const fill = await h.done(h.send({ op: 'update', id: screen.id, spec: { fill: '#ffffff' } }));
+  assert.equal(fill.error, undefined);
+  assert.equal(screen.primaryAxisSizingMode, 'FIXED'); assert.equal(screen.counterAxisSizingMode, 'FIXED');
+  assert.equal(screen.width, 390); assert.equal(screen.height, 844); assert.equal(screen.fills[0].color.r, 1);
+  // A named axis changes; the other keeps its mode, whatever resize() did to it.
+  const row = h.node(); h.page.appendChild(row);
+  Object.assign(row, { layoutMode: 'HORIZONTAL', primaryAxisSizingMode: 'AUTO', counterAxisSizingMode: 'FIXED', width: 120, height: 48 });
+  row.resize = function (w, ht) { this.width = w; this.height = ht; this.primaryAxisSizingMode = this.counterAxisSizingMode = 'FIXED'; };
+  await h.done(h.send({ op: 'update', id: row.id, spec: { h: 56 } }));
+  assert.equal(row.primaryAxisSizingMode, 'AUTO'); assert.equal(row.counterAxisSizingMode, 'FIXED');
+  assert.equal(row.width, 120); assert.equal(row.height, 56);
+});
+
+test('a text update keeps font, colour and wrapping unless the spec names them', async () => {
+  const loaded = [];
+  const h = harness({ loadFontAsync: async f => { loaded.push(f.family + ' ' + f.style); } });
+  const label = h.node('TEXT'); h.page.appendChild(label);
+  const ink = [{ type: 'SOLID', color: { r: 0.2, g: 0.4, b: 0.6 }, opacity: 1 }];
+  let characters = 'Old copy';
+  Object.defineProperty(label, 'characters', { get: () => characters, set: v => {
+    assert.ok(loaded.includes(label.fontName.family + ' ' + label.fontName.style), 'the node font is loaded before its characters change');
+    characters = v;
+  } });
+  Object.assign(label, { fontName: { family: 'Poppins', style: 'Semi Bold' }, fontSize: 15, fills: ink, textAutoResize: 'HEIGHT', width: 240, height: 40 });
+  const r = await h.done(h.send({ op: 'update', id: label.id, spec: { text: 'A longer sentence that wraps inside the box' } }));
+  assert.equal(r.error, undefined); assert.equal(r.result.fontFallbacks, undefined);
+  assert.equal(label.characters, 'A longer sentence that wraps inside the box');
+  assert.deepEqual({ ...label.fontName }, { family: 'Poppins', style: 'Semi Bold' });
+  assert.equal(label.fontSize, 15); assert.equal(label.fills, ink);
+  assert.equal(label.textAutoResize, 'HEIGHT'); assert.equal(label.width, 240);
+  // Named parts change; the rest of the font comes from the node.
+  await h.done(h.send({ op: 'update', id: label.id, spec: { weight: 'bold', color: '#ff0000' } }));
+  assert.deepEqual({ ...label.fontName }, { family: 'Poppins', style: 'Bold' }); assert.equal(label.fills[0].color.r, 1);
+  await h.done(h.send({ op: 'update', id: label.id, spec: { italic: true } }));
+  assert.deepEqual({ ...label.fontName }, { family: 'Poppins', style: 'Bold Italic' });
+  assert.equal(label.textAutoResize, 'HEIGHT'); assert.equal(label.characters, 'A longer sentence that wraps inside the box');
+});
+
+test('a text update on a font this machine lacks falls back to Inter and reports it', async () => {
+  const h = harness({ loadFontAsync: async f => { if (f.family === 'Brand Sans') throw new Error('missing font'); } });
+  const label = h.node('TEXT'); h.page.appendChild(label);
+  Object.assign(label, { fontName: { family: 'Brand Sans', style: 'Medium' }, characters: 'Old', textAutoResize: 'HEIGHT' });
+  const r = await h.done(h.send({ op: 'update', id: label.id, spec: { text: 'New' } }));
+  assert.equal(r.error, undefined); assert.deepEqual([...r.result.fontFallbacks], ['Brand Sans Medium']);
+  assert.deepEqual({ ...label.fontName }, { family: 'Inter', style: 'Regular' });
+  assert.equal(label.characters, 'New'); assert.equal(label.textAutoResize, 'HEIGHT');
+});
+
+test('create still applies its defaults: hug sizing, Inter Regular, black, auto-width text', async () => {
+  const h = harness();
+  const r = await h.done(h.send({ op: 'create', parent: h.page.id, select: false, zoom: false, spec: { layout: 'COL', w: 300, children: [{ type: 'TEXT', text: 'Hi' }, { type: 'TEXT', text: 'Wraps', w: 120 }] } }));
+  assert.equal(r.error, undefined);
+  const card = h.nodes.get(r.result.created[0].id), [hi, wraps] = card.children;
+  assert.equal(card.primaryAxisSizingMode, 'AUTO'); assert.equal(card.counterAxisSizingMode, 'FIXED'); assert.equal(card.width, 300);
+  assert.deepEqual({ ...hi.fontName }, { family: 'Inter', style: 'Regular' });
+  assert.equal(hi.fills[0].color.r, 0); assert.equal(hi.textAutoResize, 'WIDTH_AND_HEIGHT');
+  assert.equal(wraps.textAutoResize, 'HEIGHT'); assert.equal(wraps.width, 120);
+});
+
 test('instances reject oversized sources and automatic-placement leases before allocation', async () => {
   const h = harness(), comp=h.node('COMPONENT'); h.page.appendChild(comp); comp.x=-1000;
   comp.children=Array.from({length:LIMITS.specNodes},()=>({children:[]}));
