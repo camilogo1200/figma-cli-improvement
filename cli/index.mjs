@@ -1,6 +1,6 @@
 // figma-ultimate: install, connect and drive the figma-cli-ultimate bridge.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -8,7 +8,7 @@ import * as fig from '../bridge/fig.mjs';
 import { stampBuild, start, stop, restart, existing } from '../bridge/launcher.mjs';
 import { buildIdentity, PROJECT_ROOT } from '../src/lib/bridge-build.js';
 import { STATE_DIR, previousStatePending } from '../src/lib/bridge-state.js';
-import { retirePrevious, previousDaemon, PREVIOUS_PORT } from './previous-version.mjs';
+import { retirePrevious, previousDaemon, previousFolder, PREVIOUS_PORT, UPGRADE_IN_PLACE } from './previous-version.mjs';
 import { MANIFEST_PATH, figmaSettingsPath, readFigmaSettings, registration, registerInFigma, copyToClipboard } from './figma-plugins.mjs';
 import { installSkills, bundledSkills } from './skills.mjs';
 
@@ -92,6 +92,17 @@ async function autostart(on) {
     '-File', join(PROJECT_ROOT, 'bridge/install-companion.ps1'), '-NodePath', process.execPath, '-StateDirectory', STATE_DIR,
     ...(on ? [] : ['-Uninstall'])], { windowsHide: true, timeout: 20000 }).catch(e => { throw new Error(psError(e)); });
   return stdout.trim();
+}
+
+// ---- the figma-ultimate command ----
+// A clone set up with npm run setup has no figma-ultimate command, yet every
+// next step names it.
+export function commandOnPath(name, env = process.env) {
+  const exts = process.platform === 'win32' ? (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';') : [''];
+  return (env.PATH || '').split(delimiter).some(dir => dir && exts.some(ext => existsSync(join(dir, name + ext))));
+}
+function pathTip() {
+  if (!commandOnPath('figma-ultimate') && existsSync(join(PROJECT_ROOT, '.git'))) hint(`To use figma-ultimate in any terminal, run npm install -g . in ${PROJECT_ROOT}`);
 }
 
 // ---- connected files ----
@@ -178,7 +189,10 @@ async function setup(flags) {
   const previous = await retirePrevious({ log: note });
   if (previous.autostart) ok('Turned off the previous version’s automatic start');
   if (previous.daemon === 'stopped') ok(`Stopped the previous version on port ${PREVIOUS_PORT}`);
-  if (previous.daemon === 'other') note(`Port ${PREVIOUS_PORT} belongs to another program or installation; left it alone`);
+  if (previous.daemon === 'other' && previous.folder) {
+    note(`An earlier version still runs from ${previous.folder} (port ${PREVIOUS_PORT}); setup turns off only the one in its own folder`);
+    hint(`To upgrade that one, run in its folder: ${UPGRADE_IN_PLACE}`);
+  } else if (previous.daemon === 'other') note(`Port ${PREVIOUS_PORT} belongs to another program or installation; left it alone`);
   if (previous.migrated.length) ok('Moved pairings and reservations from the previous version');
   try { await start(); ok(`Bridge running on 127.0.0.1:${fig.PORT}`); }
   catch (e) {
@@ -194,12 +208,14 @@ async function setup(flags) {
     const files = await connectedFiles();
     if (files.length) ok('Connected: ' + quoted(files));
     else { note(`Next: ${OPEN_PLUGIN}.`); hint('Then run figma-ultimate approve to approve it here, or approve the Windows dialog.'); }
+    pathTip();
     return;
   }
   if (await waitForPlugin()) {
     console.log();
     note('Ready. Try: figma-ultimate files · figma-ultimate info · figma-ultimate doctor');
   }
+  pathTip();
 }
 
 async function doctor(flags) {
@@ -208,7 +224,9 @@ async function doctor(flags) {
   const local = buildIdentity();
   add(local.pluginStamped ? 'ok' : 'error', 'Plugin build', local.pluginStamped ? local.pluginBuild.slice(0, 8) : 'not stamped', local.pluginStamped ? null : 'figma-ultimate build');
   if (previousStatePending()) add('error', 'Previous version', 'its pairings and reservations have not been moved', 'figma-ultimate setup');
-  if ((await previousDaemon()).state === 'ours') add('warn', 'Previous version', `still running on port ${PREVIOUS_PORT}`, 'figma-ultimate setup');
+  const previous = await previousDaemon(), elsewhere = previous.state === 'other' && previousFolder(previous.info);
+  if (previous.state === 'ours') add('warn', 'Previous version', `still running on port ${PREVIOUS_PORT}`, 'figma-ultimate setup');
+  if (elsewhere) add('warn', 'Previous version', `still running from ${elsewhere} on port ${PREVIOUS_PORT}`, `in that folder: ${UPGRADE_IN_PLACE}`);
   let daemon = null;
   try {
     daemon = await existing();

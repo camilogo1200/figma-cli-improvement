@@ -10,7 +10,7 @@ failures stay where they happened, and a live console inside Figma shows who is 
 <p>
   <img alt="Figma Desktop 126+" src="https://img.shields.io/badge/Figma%20Desktop-126%2B-0D99FF?style=for-the-badge&logo=figma&logoColor=white">
   <img alt="Bridge protocol 4" src="https://img.shields.io/badge/bridge%20protocol-4-7B61FF?style=for-the-badge">
-  <img alt="Tests: 189 passing" src="https://img.shields.io/badge/tests-189%20passing-2EA44F?style=for-the-badge">
+  <img alt="Tests: 200 passing" src="https://img.shields.io/badge/tests-200%20passing-2EA44F?style=for-the-badge">
   <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-F5A623?style=for-the-badge"></a>
 </p>
@@ -39,15 +39,30 @@ figma-ultimate setup
 3. Checks whether the plugin is registered in Figma. If not, it copies the manifest path to the
    clipboard: in Figma Desktop choose **Plugins → Development → Import plugin from manifest…** and
    paste. (Or quit Figma and run `figma-ultimate setup --register-figma` to skip even that.)
-4. Waits for you to open a design file and run **Plugins → Development → figma-cli-ultimate**, then
-   asks you to approve that connection **in the terminal**: compare the number and press <kbd>Y</kbd>.
-   This computer is remembered for every file after that.
+4. Waits for you to open a design file and run **Plugins → Development → figma-cli-ultimate**. The
+   first time, its banner says *Connect this computer*: click **Show details**, then **Connect this
+   computer**. The terminal asks you to approve: check that it shows the same number as the plugin and
+   press <kbd>Y</kbd>. This computer is remembered for every file after that.
+
+**Why approve a connection?** The bridge listens only on your computer, but any program running on it
+can connect to a local port. Agents prove who they are with a key file in your user folder. The plugin
+runs in Figma's sandbox and cannot read files, so it gets a key of its own, once, when you confirm the
+matching number. Without that, another program could pose as a Figma file and receive your agents'
+commands. More in [§4.5](#45-pair-once).
+
+**Every day after that**, nothing to set up: the bridge starts when you sign in to Windows and comes
+back if it stops. Figma cannot start plugins on its own, so open the plugin in each file you want
+agents to work in (**Plugins → Development → figma-cli-ultimate**, or **Run last plugin**,
+<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd>) and keep its window open. It connects without asking again.
 
 Something not working? `figma-ultimate doctor` checks every piece and prints the next step.
 
 <sub>Needs Node.js 20+, Git and Figma Desktop. Tested on Windows 11 with Figma Desktop 126.x and Node 24.
-Coming from an earlier version of this bridge? `setup` moves your pairings and reservations over by itself.
-Prefer a clone? `git clone https://github.com/camilogo1200/figma-cli-improvement.git && cd figma-cli-improvement && npm ci && npm run setup`.</sub>
+Automatic start is Windows-only; elsewhere, run `figma-ultimate start` after signing in.
+**Upgrading an earlier version of this bridge?** It ran from a clone: upgrade that clone in place instead
+of installing again. In its folder, run `git pull`, `npm ci`, `npm install -g .` and `figma-ultimate setup`.
+Setup turns the old version off and moves your pairings and reservations.
+Prefer a clone for a new install? See [§4.2](#42-install).</sub>
 
 > [!NOTE]
 > **figma-cli-ultimate** started as a fork of [silships/figma-cli](https://github.com/silships/figma-cli)
@@ -142,7 +157,7 @@ jobs took **28.7–31.0 s** end to end for **34–169 ms** of real work. With hi
 between slices of the other jobs instead of after them.
 
 > [!IMPORTANT]
-> Highways are covered by the test suite (189 tests, over real loopback sockets and the real daemon
+> Highways are covered by the test suite (200 tests, over real loopback sockets and the real daemon
 > process). They have **not yet run in live Figma**: the live results in
 > [§13](#13-testing-and-measured-evidence) (25/25 acceptance checks, a 12,096-node stress run) predate them.
 
@@ -447,7 +462,11 @@ every outcome with its target and size. See [§6](#6-the-plugin-ui-banner-and-wo
 |---|---|---|
 | **From GitHub** (recommended) | `npm install -g github:camilogo1200/figma-cli-improvement`<br>`figma-ultimate setup` | Using it. One command, no clone to keep around |
 | A tag or branch | `npm install -g github:camilogo1200/figma-cli-improvement#<tag>` | Pinning a release |
-| **Clone** | `git clone https://github.com/camilogo1200/figma-cli-improvement.git`<br>`cd figma-cli-improvement && npm ci && npm run setup` | Changing the code. The clone folder is the installation |
+| **Clone** | `git clone https://github.com/camilogo1200/figma-cli-improvement.git`<br>`cd figma-cli-improvement`<br>`npm ci`<br>`npm install -g .`<br>`figma-ultimate setup` | Changing the code, and upgrading an earlier version (in its own clone, after `git pull`). The clone folder is the installation |
+
+`npm install -g .` links the `figma-ultimate` command to the clone. It replaces a global install of this
+package, so you keep one installation. Without it, run each command from the clone as
+`node bin/figma-ultimate.mjs <command>`; setup reminds you.
 
 The package ships only what runs, plus the agent skills: 36 files, about 160 kB, one dependency (`ws`).
 
@@ -460,7 +479,9 @@ Run it once per computer, and again whenever something seems off. Every step is 
 2. **Upgrades an earlier installation of this bridge** (it used port 3456 and another settings folder):
    turns off its automatic start, stops its daemon if it is idle, and copies the pairings and the
    reservation journal over. If that daemon is still working, setup stops and asks you to wait. An
-   installation from another folder, or any other program, is left alone.
+   earlier version in another folder keeps running (its pairings are still copied): setup names that
+   folder, and upgrading it there (`git pull`, `npm ci`, `npm install -g .`, `figma-ultimate setup`)
+   turns it off. Any other program on that port is left alone.
 3. Starts the bridge on `127.0.0.1:3049`, or restarts it if it runs an older build.
 4. Turns on **automatic start** (Windows): a sign-in companion checks every 5 s and starts the bridge
    when it is missing. It never kills Figma, replaces another installation's daemon or replays work.
@@ -492,8 +513,8 @@ Teams can publish it privately inside a Figma organization instead.
 Open a design file and run **Plugins → Development → figma-cli-ultimate**. It opens as a small banner
 in the canvas's bottom-left corner. Keep it open: the window *is* the bridge for that file.
 
-The first time, the plugin asks to connect and shows a six-digit number. Approve it where you see the
-same number:
+The first time, the banner says *Connect this computer*. Click **Show details**, then **Connect this
+computer**: the plugin shows a six-digit number. Approve it where you see the same number:
 
 - **In the terminal** running `figma-ultimate setup` (or `figma-ultimate approve`). Press <kbd>Y</kbd>.
   While a terminal is waiting, no dialog opens.
@@ -501,7 +522,17 @@ same number:
 - **Manually**: `figma-ultimate pair` prints a two-minute code; paste it under
   **Show details → Advanced pairing & setup**.
 
-The computer is then remembered in every file. **Connection settings → Forget this computer** revokes it.
+The computer is then remembered in every file, and the plugin connects by itself whenever you open it.
+**Connection settings → Forget this computer** revokes it.
+
+**Why pairing exists.** The bridge listens only on `127.0.0.1`, but every program on the computer can
+reach that address. Agents and the CLI authenticate with the daemon token in `~/.figma-cli-ultimate`,
+in your user folder. A plugin runs in Figma's sandbox and cannot read files, so it has no way to show
+that token. Pairing gives it a credential of its own: the daemon issues it once you approve, the plugin
+keeps it in Figma's storage for this plugin on this computer, and the daemon stores only its hash. The
+number makes sure you approve your own Figma window and not a request from something else. Without
+pairing, any program on the computer could pose as a Figma file, receive the commands your agents send
+to it and answer them.
 
 ### 4.6 Check
 
@@ -516,8 +547,9 @@ version (`--json` for scripts).
 
 ### 4.7 Update, restart, uninstall
 
-- **Update:** run the install command again, then `figma-ultimate setup`. A new build restarts the
-  bridge; close and reopen the plugin in each open file (it shows a build mismatch until you do).
+- **Update:** run the install command again (in a clone: `git pull`, then `npm ci`), then
+  `figma-ultimate setup`. A new build restarts the bridge; close and reopen the plugin in each open
+  file (it shows a build mismatch until you do).
   Run `figma-ultimate skills install` again to update the agent skills.
 - **Restart:** `figma-ultimate restart`. Guarded: it refuses while work is active or uncertain and never
   kills a process by a PID it read from a file.
@@ -1130,7 +1162,7 @@ What the setup tests prove (`tests/bridge-setup.test.js`, `tests/bridge-state.te
 
 | Evidence | Result |
 |---|---|
-| Test suite (2026-10-20) | 189 / 189, including highways over real loopback sockets and the real daemon process |
+| Test suite (2026-10-21) | 200 / 200, including highways over real loopback sockets and the real daemon process |
 | Package install from a tarball into a scratch prefix (2026-10-20) | `start`, `status`, `files`, `stop` work; a clone of the same build shares the daemon |
 | Live coordinator acceptance, 2 files, 3 pages (2026-10-16) | **25 / 25 checks**. Collision, gutter and overflow probes left no stray nodes |
 | Live navigation and layout stress (2026-10-20) | 12 / 12 jobs, 12,096 nodes, no hold or quarantine |

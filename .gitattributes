@@ -1,0 +1,3 @@
+# npm rewrites a CRLF shebang when it links a bin (npm install -g .), which leaves
+# a Windows clone with a modified file and can block the next git pull.
+bin/* text eol=lf

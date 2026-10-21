@@ -28,7 +28,10 @@ running, so it is fine when `doctor` asks for it.
 ## First-time setup
 
 1. **Install** (if `figma-ultimate` is not found; needs Node.js 20+ and Git). Ask, then run:
-   `npm install -g github:camilogo1200/figma-cli-improvement`
+   `npm install -g github:camilogo1200/figma-cli-improvement`. In a clone of this repository, run
+   `npm ci` and `npm install -g .` there instead: that links the command to the clone (without it,
+   use `node bin/figma-ultimate.mjs <command>` from the clone). An earlier version of the bridge
+   (port 3456) is upgraded the same way in its own clone, after `git pull`.
 2. **Set up:** `figma-ultimate setup`. It builds, starts the bridge on `127.0.0.1:3049`, turns on
    automatic start at sign-in (Windows; `--no-autostart` skips it) and checks the plugin's
    registration. From a shell the user cannot type into, add `--no-wait`; the pairing approval below
@@ -40,11 +43,16 @@ running, so it is fine when `doctor` asks for it.
    keeps a backup).
 4. **Open the plugin:** in a design file, **Plugins → Development → figma-cli-ultimate**. It opens as
    a small banner in the bottom-left corner. It must stay open; minimize it rather than closing it.
-5. **Pair once:** the plugin shows a six-digit number. The user approves it where the same number is
-   shown: in the terminal running `figma-ultimate setup` or `figma-ultimate approve` (press Y), or in
-   the Windows dialog. The user compares the numbers, so never answer that prompt yourself. Manual
-   fallback: `figma-ultimate pair` prints a two-minute code to paste under **Show details → Advanced
-   pairing & setup**.
+5. **Pair once:** the banner says *Connect this computer*; the user clicks **Show details**, then
+   **Connect this computer**, and the plugin shows a six-digit number. The user approves it where the
+   same number is shown: in the terminal running `figma-ultimate setup` or `figma-ultimate approve`
+   (press Y), or in the Windows dialog. The user compares the numbers, so never answer that prompt
+   yourself. Manual fallback: `figma-ultimate pair` prints a two-minute code to paste under **Show
+   details → Advanced pairing & setup**. If the user asks why: the plugin runs in Figma's sandbox and
+   cannot read the bridge's key file, so it gets its own key once; without it, any program on the
+   computer could pose as a Figma file.
+   After pairing, the bridge starts at sign-in (Windows) and the plugin connects by itself when the
+   user opens it in a file; Figma cannot open it for them.
 6. **Check:** `figma-ultimate doctor`, then `figma-ultimate files`.
 
 ## When a command fails
@@ -57,16 +65,16 @@ running, so it is fine when `doctor` asks for it.
 | "port 3049 is used by another program" | tell the user; do not stop that program |
 | `plugin-offline`, "Connected files: none" | the user opens the plugin in the file (step 4) |
 | "Plugin in Figma: not registered" or "registered from another folder" | import the manifest again (step 3) |
-| "Previous version" | `figma-ultimate setup` moves pairings and turns off the old automatic start |
+| "Previous version" | `figma-ultimate setup` moves pairings and turns off the old automatic start. When the line names another folder, that folder is upgraded instead (ask first): `git pull`, `npm ci`, `npm install -g .`, `figma-ultimate setup` there |
 | "Automatic start: off" | optional: ask, then `figma-ultimate autostart on` |
 | `ambiguous-file` | add `--file "<name part>"` or `--file <fileKey>` (see `figma-ultimate files`) |
 | `worker-uncertain`, `needsReview: true` | work is held for review. Not a setup problem: restarting does not clear it. The user reviews it in the plugin (**Show details**, attention panel, **Release after review**) |
 
 ## Update
 
-The user runs the install command again, then `figma-ultimate setup`. A new build restarts the
-bridge; then reopen the plugin in each open file (it reports a build mismatch until then). Refresh
-the agent skills with `figma-ultimate skills install`.
+The user runs the install command again (in a clone: `git pull`, then `npm ci`), then
+`figma-ultimate setup`. A new build restarts the bridge; then reopen the plugin in each open file
+(it reports a build mismatch until then). Refresh the agent skills with `figma-ultimate skills install`.
 
 ## Other systems
 

@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PairingApprovals } from '../src/lib/bridge-pairing.js';
+import { PREVIOUS_STATE_DIR } from '../src/lib/bridge-state.js';
 import { registration, withRegistration, registerInFigma, PLUGIN_ID } from '../cli/figma-plugins.mjs';
-import { pickFile } from '../cli/index.mjs';
+import { pickFile, commandOnPath } from '../cli/index.mjs';
+import { previousFolder } from '../cli/previous-version.mjs';
 import { installSkills, bundledSkills, skillTargets, SKILLS_DIR, RECEIPT } from '../cli/skills.mjs';
 
 const flush = () => new Promise(r => setImmediate(r));
@@ -125,6 +127,24 @@ test('commands pick one connected file by key, name or unique part of the name',
   assert.throws(() => pickFile(files), { kind: 'ambiguous-file' });
   assert.equal(pickFile(files.slice(0, 1)).workerId, 'w1');
   assert.throws(() => pickFile([]), { kind: 'plugin-offline' });
+});
+
+test('an earlier version is named by its folder only when its health proves it is this bridge', () => {
+  const clone = resolve(tmpdir(), 'figma-cli');
+  assert.equal(previousFolder({ root: join(clone, 'src'), stateDirectory: PREVIOUS_STATE_DIR, busy: false }), clone);
+  // The original figma-cli also answers on port 3456 and reports a root, but no settings folder.
+  assert.equal(previousFolder({ status: 'ok', version: '2.2.5', root: join(clone, 'src') }), null);
+  assert.equal(previousFolder({ root: join(clone, 'src'), stateDirectory: join(tmpdir(), '.figma-ds-cli') }), null);
+  assert.equal(previousFolder(undefined), null);
+});
+
+test('setup can tell whether a terminal finds the figma-ultimate command', t => {
+  const dir = scratch(t);
+  const env = { PATH: [join(dir, 'empty'), dir].join(delimiter), PATHEXT: '.COM;.EXE;.BAT;.CMD' };
+  assert.equal(commandOnPath('figma-ultimate', env), false);
+  writeFileSync(join(dir, process.platform === 'win32' ? 'figma-ultimate.cmd' : 'figma-ultimate'), '');
+  assert.equal(commandOnPath('figma-ultimate', env), true);
+  assert.equal(commandOnPath('figma-ultimate', { PATH: '' }), false);
 });
 
 // ---- agent skills ----

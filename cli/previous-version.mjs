@@ -7,7 +7,7 @@
 import { createConnection } from 'node:net';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { request } from '../bridge/fig.mjs';
@@ -16,7 +16,17 @@ import { PREVIOUS_STATE_DIR, previousStatePending } from '../src/lib/bridge-stat
 import { migrateState } from '../bridge/migrate-state.mjs';
 
 export const PREVIOUS_PORT = 3456;
+// Earlier versions were always a clone. Upgrading that clone is the one path
+// that retires them, whatever its folder holds now.
+export const UPGRADE_IN_PLACE = 'git pull, npm ci, npm install -g . and figma-ultimate setup';
 const same = (a, b) => process.platform === 'win32' ? String(a).toLowerCase() === String(b).toLowerCase() : a === b;
+// The folder an earlier version of this bridge runs from. Its /health names its
+// settings folder and <folder>/src; the original figma-cli, also on port 3456,
+// reports a root but not that settings folder.
+export function previousFolder(info) {
+  if (typeof info?.root !== 'string' || typeof info.stateDirectory !== 'string') return null;
+  return same(resolve(info.stateDirectory), resolve(PREVIOUS_STATE_DIR)) ? dirname(info.root) : null;
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function previousToken() {
@@ -66,6 +76,7 @@ export async function retirePrevious({ log = () => {} } = {}) {
   }
   const old = await previousDaemon();
   report.daemon = old.state;
+  if (old.state === 'other') report.folder = previousFolder(old.info);
   if (old.state === 'ours') {
     if (old.info.busy || old.info.pending) {
       throw new Error(`The previous version (port ${PREVIOUS_PORT}) is still working. Let its jobs finish, then run figma-ultimate setup again.`);

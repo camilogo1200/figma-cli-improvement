@@ -36,6 +36,11 @@ First release packaged on its own as **figma-cli-ultimate**.
 - `update` changes only the fields its spec names. It no longer turns fixed auto-layout axes into hug
   when `w`/`h` are left out, and a text update keeps the node's font, colour and wrapping unless they
   are sent; text fields such as `color` or `size` also apply without `text`.
+- `setup` and `doctor` name the folder an earlier version still runs from and say how to upgrade it
+  there. `setup` from a clone without the `figma-ultimate` command says how to add it
+  (`npm install -g .`), and `bin/` is checked out with LF so that command leaves the clone unmodified.
+- The README explains why pairing exists, the first-time **Show details → Connect this computer**
+  click, and what happens on later days (automatic start, reopening the plugin per file).
 
 ### Removed
 - The original figma-cli commands and modes (`render`, `eval`, tokens, blocks, shadcn, extract,
