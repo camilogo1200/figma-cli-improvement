@@ -50,8 +50,9 @@ stays protected:
 3. Tell the user:
    - what you sent (the file and the commands, briefly) and the error line or batch results;
    - which ids were created (`created` in the batch results), so they can check them;
-   - that the plugin window holds it for review: **Show details**, the attention panel, then
-     **Release after review** once they have checked the canvas. Releasing is their decision.
+   - that the plugin window of that file holds it for review: **Show details**, the attention panel,
+     then **Release after review** once they have checked the canvas. Another file's window names
+     the file but cannot release it. Releasing is their decision.
 4. After they release it, read the canvas again (`children`, `tree`) before deciding what is still
    missing. Send only that, as a new request.
 

@@ -68,7 +68,7 @@ running, so it is fine when `doctor` asks for it.
 | "Previous version" | `figma-ultimate setup` moves pairings and turns off the old automatic start. When the line names another folder, that folder is upgraded instead (ask first): `git pull`, `npm ci`, `npm install -g .`, `figma-ultimate setup` there |
 | "Automatic start: off" | optional: ask, then `figma-ultimate autostart on` |
 | `ambiguous-file` | add `--file "<name part>"` or `--file <fileKey>` (see `figma-ultimate files`) |
-| `worker-uncertain`, `needsReview: true` | work is held for review. Not a setup problem: restarting does not clear it. The user reviews it in the plugin (**Show details**, attention panel, **Release after review**) |
+| `worker-uncertain`, `needsReview: true` | work is held for review. Not a setup problem: restarting does not clear it. The user reviews it in that file's plugin window (**Show details**, attention panel, **Release after review**) |
 
 ## Update
 

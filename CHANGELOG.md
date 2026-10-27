@@ -8,6 +8,11 @@
   2026-10-20 failures took about ten seconds). Cancellations, bridge failures and the switch itself
   are never retried. A retried load's receipt carries `loadAttempts` and `loadErrors`.
 
+### Fixed
+- The plugin window's attention panel lists only its own file's held items, under the file's name,
+  and names the other files that hold the rest. It used to offer **Release after review** for every
+  file's items, and the daemon refused each one that belonged to another file.
+
 ## 3.0.0 — 2026-10-20
 
 First release packaged on its own as **figma-cli-ultimate**.

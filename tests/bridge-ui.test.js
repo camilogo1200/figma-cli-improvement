@@ -617,6 +617,23 @@ test('held items can be released after review with two clicks, never one',()=>{
   h.window.beforeunload();
 });
 
+test('each window offers release only for its own file and names the files holding the rest',()=>{
+  const h=harness(),ws=h.connect(),alert=()=>h.elements.get('alert');
+  const released=()=>[...alert().querySelectorAll('[data-release]')].map(b=>b.getAttribute('data-release'));
+  ws.receive({...measuredSnapshot(),held:4,reservations:[{requestId:'r7',fileKey:'fileB',pageId:'q1',laneId:'auto-r7',label:'Icons',state:'held',rect:{x:0,y:0,width:10,height:10}}],
+    fileHolds:[{fileKey:'fileA',requestId:'h1',label:'remove',state:'held'},{fileKey:'fileA',scope:'highway:hw-9',requestId:'h2',label:'remove',state:'held'},{fileKey:'fileB',requestId:'h3',label:'remove',state:'held'}]});
+  assert.deepEqual(released(),['h1','h2'],'the daemon refuses another file’s items, so they get no button');
+  assert.match(alert().textContent,/Held in Example/);assert.match(alert().textContent,/Also held in other files: Other · 2/);
+  assert.match(alert().textContent,/2held here/);
+  ws.receive({...measuredSnapshot(2),held:1,fileHolds:[{fileKey:'fileB',requestId:'h3',label:'remove',state:'held'}]});
+  assert.deepEqual(released(),[]);
+  assert.match(alert().querySelector('h3').textContent,/Held in another file/);
+  assert.match(alert().textContent,/Nothing in this file is held/);assert.match(alert().textContent,/Held in: Other · 1/);
+  const zoneOnly={...measuredSnapshot(3),held:1,reservations:[{requestId:'r8',fileKey:'fileB',pageId:'q1',laneId:'auto-r8',state:'held',rect:{x:0,y:0,width:10,height:10}}]};
+  ws.receive(zoneOnly);assert.match(alert().textContent,/1held in other files/,'a snapshot without fileHolds still splits zones by file');
+  h.window.beforeunload();
+});
+
 test('reads, snapshots and control calls appear in the timeline and Activity with where and how much',()=>{
   const h=harness(),ws=h.connect();
   const t={...measuredSnapshot(),workers:measuredSnapshot().workers.map(w=>({...w,current:null})),lanes:[],

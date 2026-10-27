@@ -61,8 +61,8 @@ item. The outcome decides what you may do:
 | `partial`, `failed`, `uncertain`, `disconnected` | **Stop.** Do not retry, rebuild or delete anything. Tell the user what you sent and what came back |
 
 A write that ends `partial`, `failed` or `uncertain` holds its channel: later writes fail with
-`worker-uncertain` until the user reviews it in the plugin (**Show details**, the attention panel,
-**Release after review**). Releasing is the user's decision, never yours, and never something to get
+`worker-uncertain` until the user reviews it in that file's plugin window (**Show details**, the
+attention panel, **Release after review**). Releasing is the user's decision, never yours, and never something to get
 around by opening another highway or restarting. Details: [references/recovery.md](references/recovery.md).
 
 ## Long or parallel work

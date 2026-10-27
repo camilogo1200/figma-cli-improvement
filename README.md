@@ -10,7 +10,7 @@ failures stay where they happened, and a live console inside Figma shows who is 
 <p>
   <img alt="Figma Desktop 126+" src="https://img.shields.io/badge/Figma%20Desktop-126%2B-0D99FF?style=for-the-badge&logo=figma&logoColor=white">
   <img alt="Bridge protocol 4" src="https://img.shields.io/badge/bridge%20protocol-4-7B61FF?style=for-the-badge">
-  <img alt="Tests: 204 passing" src="https://img.shields.io/badge/tests-204%20passing-2EA44F?style=for-the-badge">
+  <img alt="Tests: 205 passing" src="https://img.shields.io/badge/tests-205%20passing-2EA44F?style=for-the-badge">
   <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-F5A623?style=for-the-badge"></a>
 </p>
@@ -157,7 +157,7 @@ jobs took **28.7–31.0 s** end to end for **34–169 ms** of real work. With hi
 between slices of the other jobs instead of after them.
 
 > [!IMPORTANT]
-> Highways are covered by the test suite (204 tests, over real loopback sockets and the real daemon
+> Highways are covered by the test suite (205 tests, over real loopback sockets and the real daemon
 > process). They have **not yet run in live Figma**: the live results in
 > [§13](#13-testing-and-measured-evidence) (25/25 acceptance checks, a 12,096-node stress run) predate them.
 
@@ -880,9 +880,11 @@ so minimize instead of closing while agents work.
 ![Activity: reads and exports with their target and size (sample data)](docs/images/console-activity.png)
 
 **Uncertainty alert.** When an outcome is `uncertain` or areas are held, a hero panel shows a ring with
-the held count and lists the held items. **Review outcome** opens Activity and **Inspect held zones**
-opens the map. Each held item has **Release after review**, which takes two clicks and is meant for
-after you have looked at the canvas. Nothing is ever retried or released automatically.
+the held count and lists this file's held items under the file's name. **Review outcome** opens
+Activity and **Inspect held zones** opens the map. Each held item has **Release after review**, which
+takes two clicks and is meant for after you have looked at the canvas. The daemon releases an item only
+from the window of the file that holds it, so items held in other files are named by file, with no
+button: open the plugin in that file to release them. Nothing is ever retried or released automatically.
 
 ### 6.4 Themes
 
@@ -968,8 +970,9 @@ partial | disconnected | uncertain (area HELD; only its own channel is blocked)
   read-only: `coordinate({ op: 'reconcile', requestId })` makes the plugin check the receipt's request ID,
   fence, file, state and committed geometry. Missing or inconsistent proof stays held.
 - **Release after review.** For holds that no plugin proof can settle (unscoped writes, closed
-  highways), the operator can release them from the console's attention panel (two clicks). This is a
-  human decision, recorded as a receipt, never a timeout. It replaces editing the journal by hand.
+  highways), the operator can release them from the console's attention panel (two clicks), in the
+  plugin window of the file that holds them. This is a human decision, recorded as a receipt, never a
+  timeout. It replaces editing the journal by hand.
 - Deleting the journal is not reconciliation. The daemon keeps it in memory, so editing it does nothing
   without a restart.
 
@@ -1172,7 +1175,7 @@ What the setup tests prove (`tests/bridge-setup.test.js`, `tests/bridge-state.te
 
 | Evidence | Result |
 |---|---|
-| Test suite (2026-10-22) | 204 / 204, including highways over real loopback sockets and the real daemon process |
+| Test suite (2026-10-27) | 205 / 205, including highways over real loopback sockets and the real daemon process |
 | Package install from a tarball into a scratch prefix (2026-10-20) | `start`, `status`, `files`, `stop` work; a clone of the same build shares the daemon |
 | Live coordinator acceptance, 2 files, 3 pages (2026-10-16) | **25 / 25 checks**. Collision, gutter and overflow probes left no stray nodes |
 | Live navigation and layout stress (2026-10-20) | 12 / 12 jobs, 12,096 nodes, no hold or quarantine |
