@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Page select attempts a native `loadAsync()` rejection again, up to 3 attempts. No attempt starts
+  45 s or more after the request began. A cold heavy page can outlast one native load (the
+  2026-10-20 failures took about ten seconds). Cancellations, bridge failures and the switch itself
+  are never retried. A retried load's receipt carries `loadAttempts` and `loadErrors`.
+
 ## 3.0.0 — 2026-10-20
 
 First release packaged on its own as **figma-cli-ultimate**.

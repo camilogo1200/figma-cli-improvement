@@ -65,6 +65,17 @@ test('disconnected navigation can reconnect without daemon recovery; mixed batch
   }
 });
 
+test('a plugin error reply without a kind settles as kind plugin, outcome failed, before any daemon deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
+  const { bridge, ws } = fixture(t);
+  const job = bridge.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } });
+  const id = ws.sent[0].id; ws.message({ type: 'busy', id, busy: true });
+  t.mock.timers.tick(10451);
+  ws.message({ type: 'result', id, error: 'Native rejection' });
+  await assert.rejects(job, { kind: 'plugin', outcome: 'failed' });
+  assert.equal(ws.sent.some(m => m.action === 'cancel'), false); assert.equal(bridge.recoveryRequired, false);
+});
+
 test('explicit navigation deadlines still expire and never report an in-flight switch as not-started', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'] });
   const { bridge, ws } = fixture(t);

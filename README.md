@@ -10,7 +10,7 @@ failures stay where they happened, and a live console inside Figma shows who is 
 <p>
   <img alt="Figma Desktop 126+" src="https://img.shields.io/badge/Figma%20Desktop-126%2B-0D99FF?style=for-the-badge&logo=figma&logoColor=white">
   <img alt="Bridge protocol 4" src="https://img.shields.io/badge/bridge%20protocol-4-7B61FF?style=for-the-badge">
-  <img alt="Tests: 200 passing" src="https://img.shields.io/badge/tests-200%20passing-2EA44F?style=for-the-badge">
+  <img alt="Tests: 204 passing" src="https://img.shields.io/badge/tests-204%20passing-2EA44F?style=for-the-badge">
   <img alt="Node.js 20+" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-F5A623?style=for-the-badge"></a>
 </p>
@@ -157,7 +157,7 @@ jobs took **28.7–31.0 s** end to end for **34–169 ms** of real work. With hi
 between slices of the other jobs instead of after them.
 
 > [!IMPORTANT]
-> Highways are covered by the test suite (200 tests, over real loopback sockets and the real daemon
+> Highways are covered by the test suite (204 tests, over real loopback sockets and the real daemon
 > process). They have **not yet run in live Figma**: the live results in
 > [§13](#13-testing-and-measured-evidence) (25/25 acceptance checks, a 12,096-node stress run) predate them.
 
@@ -727,12 +727,22 @@ separate deadline (30 seconds by default). Builders rarely need it: creation tar
 without changing the visible page.
 
 The two recorded failures on 2026-10-20 lasted 10.609 and 10.451 seconds and had
-`kind: plugin`. Their native exception text was lost when the caller's `finally`
-block tried to restore the previous page. A standalone select does not enter the
-UI yield loop: that watchdog reports `yield-timeout`, while the daemon execution
-timer reports `daemon-timeout`. This identifies the Figma API path as the likely
-source, but does **not** prove an undocumented ten-second `setCurrentPageAsync`
-limit.
+`kind: plugin`, `outcome: failed`: the reply to an error without a bridge kind, which
+only a native Figma rejection produces. Their native exception text was lost when the
+caller's `finally` block tried to restore the previous page. A standalone select does
+not enter the UI yield loop: that watchdog reports `yield-timeout`/`partial`, while the
+daemon execution timer reports `daemon-timeout`/`uncertain` and was 60 s then, 120 s
+now. The regression suite pins all three fingerprints. Both failures selected
+"Customer app" (720 roots) while its scene was not loaded yet. The same pair of pages
+switched in 120–254 ms that evening, once loaded. This points to a native limit
+of about ten seconds on loading a cold page, but does **not** prove an undocumented
+`setCurrentPageAsync` limit.
+
+Loading is a read, so a native `loadAsync()` rejection is attempted again, up to
+**3 attempts**. No attempt starts more than 45 s after the request began. A
+cancellation or a bridge failure is never retried, and the switch itself is never
+retried. Receipts for a retried load carry `loadAttempts` and the earlier errors in
+`loadErrors`.
 
 Navigation failures retain `details.navigation` with the phase (`lookup`,
 `load`, or `switch`), requested/previous/current page IDs, duration, and the native
@@ -740,7 +750,7 @@ error (bounded to 512 characters). The coordinator keeps this metadata in its
 receipts, even if caller cleanup masks the error. Loading failures are `not-started`;
 failures after invoking the switch are `failed`, with the actual page recorded. If the
 native promise rejects after the target is already current, the plugin can reconcile
-that selection as success. No native switch is automatically retried.
+that selection as success.
 
 A standalone select or an all-select batch never creates a hold. A failed
 select preceding only skipped writers also releases that batch's hold once every
@@ -1162,7 +1172,7 @@ What the setup tests prove (`tests/bridge-setup.test.js`, `tests/bridge-state.te
 
 | Evidence | Result |
 |---|---|
-| Test suite (2026-10-21) | 200 / 200, including highways over real loopback sockets and the real daemon process |
+| Test suite (2026-10-22) | 204 / 204, including highways over real loopback sockets and the real daemon process |
 | Package install from a tarball into a scratch prefix (2026-10-20) | `start`, `status`, `files`, `stop` work; a clone of the same build shares the daemon |
 | Live coordinator acceptance, 2 files, 3 pages (2026-10-16) | **25 / 25 checks**. Collision, gutter and overflow probes left no stray nodes |
 | Live navigation and layout stress (2026-10-20) | 12 / 12 jobs, 12,096 nodes, no hold or quarantine |

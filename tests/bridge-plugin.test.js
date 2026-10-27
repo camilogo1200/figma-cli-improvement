@@ -129,6 +129,60 @@ test('page loading failures are not-started and a completed switch can reconcile
   assert.equal(calls, 1, 'Selecting the current page does not switch again');
 });
 
+// 2026-10-20: two selects of a heavy page failed after 10.609 s and 10.451 s with
+// kind 'plugin', outcome 'failed'. That is the reply to an error without a bridge
+// kind, which only a native Figma rejection produces. The UI yield watchdog answers
+// 'yield-timeout'/'partial' (and a select never yields); the daemon's execution
+// timer answers 'daemon-timeout'/'uncertain' (tests/bridge-transport.test.js).
+test('only a native rejection matches the ten-second page-select fingerprint', async () => {
+  const h = harness({ autoYield: false });
+  h.figma.ui.onmessage({ type: 'cmd-batch', id: 'watched', session: 1, cmds: [{ op: 'info' }, { op: 'page', action: 'list' }] });
+  await until(() => h.messages.some(m => m.type === 'yield'));
+  await h.figma.ui.onmessage({ type: 'yield-timeout', k: h.messages.find(m => m.type === 'yield').k });
+  const watchdog = (await h.done('watched')).results[1];
+  assert.deepEqual([watchdog.kind, watchdog.outcome], ['yield-timeout', 'partial']);
+  h.figma.getNodeByIdAsync = async () => { throw Object.freeze(new Error('Native rejection')); };
+  const native = await h.done(h.send({ op: 'children', id: h.page.id }));
+  assert.deepEqual([native.kind, native.outcome], ['plugin', 'failed']);
+});
+
+test('a cold heavy page whose native load times out is loaded again before a single switch', async t => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  const h = harness({ autoYield: false }), target = h.node('PAGE'); h.figma.root.appendChild(target);
+  let loads = 0, switches = 0;
+  target.loadAsync = async () => { loads++; t.mock.timers.tick(10451); if (loads < 3) throw Object.freeze(new Error('Timed out loading page')); };
+  h.figma.setCurrentPageAsync = async p => { switches++; h.figma.currentPage = p; };
+  const result = await h.done(h.send({ op: 'page', action: 'select', id: target.id }));
+  assert.equal(result.error, undefined); assert.equal(result.result.current, true);
+  assert.equal(loads, 3); assert.equal(switches, 1);
+  assert.deepEqual(result.result.navigation, {
+    phase: 'switch', requestedPageId: target.id, previousPageId: h.page.id, currentPageId: target.id, elapsedMs: 31353,
+    artworkChanged: false, loadAttempts: 3, loadErrors: ['Timed out loading page', 'Timed out loading page'],
+  });
+  assert.equal(h.messages.some(m => m.type === 'yield'), false); assert.equal(h.made, 0);
+});
+
+test('page load retries are bounded, stay not-started, and never follow a cancellation', async t => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  const h = harness(), target = h.node('PAGE'); h.figma.root.appendChild(target);
+  let loads = 0, switches = 0;
+  h.figma.setCurrentPageAsync = async () => { switches++; };
+  target.loadAsync = async () => { loads++; t.mock.timers.tick(10000); throw Error('Timed out loading page'); };
+  let result = await h.done(h.send({ op: 'page', action: 'select', id: target.id }));
+  assert.deepEqual([result.kind, result.outcome, loads], ['page-navigation', 'not-started', 3]);
+  assert.equal(result.details.navigation.loadAttempts, 3); assert.equal(result.details.navigation.loadErrors.length, 2);
+  assert.equal(result.details.navigation.cause, 'Timed out loading page');
+  loads = 0; target.loadAsync = async () => { loads++; t.mock.timers.tick(46000); throw Error('Slow load'); };
+  result = await h.done(h.send({ op: 'page', action: 'select', id: target.id }));
+  assert.deepEqual([result.outcome, loads, result.details.navigation.loadAttempts], ['not-started', 1, undefined], 'No attempt starts after 45 s');
+  loads = 0; let rejectLoad;
+  target.loadAsync = () => { loads++; return new Promise((_, reject) => { rejectLoad = reject; }); };
+  const id = h.send({ op: 'page', action: 'select', id: target.id });
+  await until(() => rejectLoad); await h.cancel(id); rejectLoad(Error('Load aborted'));
+  result = await h.done(id);
+  assert.deepEqual([result.kind, result.outcome, loads, switches], ['cancelled', 'not-started', 1, 0]);
+});
+
 test('cancelling page navigation waits for the native call before advancing the file queue', async () => {
   const h = harness(), target = h.node('PAGE'); h.figma.root.appendChild(target);
   let finishSwitch;

@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.0.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = 'd00648559964b140392dd5dd'; // stamped by bridge/launcher.mjs build
+var BUILD = 'eec67bc7ca87fddefc77890e'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -1190,12 +1190,17 @@ var OPS = {
 // Page references are available without loading their scene. Preload explicitly
 // so native switching does not also have to load a heavy page. Neither phase
 // yields through the UI watchdog, and a cancelled native call must settle before
-// the file queue advances. Do not race it against a timer or retry it blindly.
+// the file queue advances. Do not race either call against a timer. Loading is a
+// read: a cold heavy page can outlast one native attempt (about ten seconds on
+// 2026-10-20), so Figma's own load rejection gets bounded further attempts. The
+// switch is never retried.
+var PAGE_LOAD_ATTEMPTS = 3, PAGE_LOAD_RETRY_MS = 45000;
 async function selectPage(cmd) {
-  var started = Date.now(), phase = 'lookup', previous = figma.currentPage.id, switching = false, page;
+  var started = Date.now(), phase = 'lookup', previous = figma.currentPage.id, switching = false, page, loads = 0, loadErrors = [];
   function details(cause) {
     var d = { phase: phase, requestedPageId: typeof cmd.id === 'string' ? cmd.id.slice(0, 128) : null, previousPageId: previous,
       currentPageId: figma.currentPage.id, elapsedMs: Date.now() - started, artworkChanged: false };
+    if (loads > 1) { d.loadAttempts = loads; d.loadErrors = loadErrors.slice(); }
     if (arguments.length) d.cause = String(cause && cause.message || cause).slice(0, 512);
     return d;
   }
@@ -1208,7 +1213,16 @@ async function selectPage(cmd) {
     checkCancelled();
     if (page.id === figma.currentPage.id) return result(details());
     phase = 'load';
-    if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
+    while (typeof page.loadAsync === 'function') {
+      loads++;
+      try { await checked(page.loadAsync()); break; }
+      catch (e) {
+        // Only an un-kinded native rejection is retried, never a cancellation.
+        checkCancelled();
+        if ((e && e.kind) || loads >= PAGE_LOAD_ATTEMPTS || Date.now() - started >= PAGE_LOAD_RETRY_MS) throw e;
+        loadErrors.push(String(e && e.message || e).slice(0, 160));
+      }
+    }
     checkCancelled();
     phase = 'switch'; switching = true;
     await checked(figma.setCurrentPageAsync(page));

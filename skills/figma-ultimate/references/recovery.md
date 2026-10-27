@@ -37,6 +37,9 @@ stays protected:
 - A script on a highway holds only that highway ("This highway has held work requiring review;
   other highways are unaffected"). Other agents keep working.
 - No timeout, restart or reconnection clears a hold.
+- Selecting a page (`{"op":"page","action":"select","id":…}`, alone or in a batch of selects) is
+  navigation, not a write, and never holds. A failed load is `not-started`; a failed switch is
+  `failed` and `details.navigation.currentPageId` says which page Figma shows.
 
 ## What to do when work is held
 
