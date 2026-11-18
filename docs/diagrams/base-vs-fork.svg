@@ -74,7 +74,7 @@
     <circle cx="10" cy="124" r="10" fill="#248a3d"/><text class="badge" x="6" y="128">4</text><text class="good" x="30" y="129">Yields every 100 nodes keep Figma responsive and let other agents in.</text>
     <circle cx="10" cy="162" r="10" fill="#248a3d"/><text class="badge" x="6" y="166">5</text><text class="good" x="30" y="167">Zones, rollback of owned nodes, typed errors and five honest outcomes.</text>
     <circle cx="10" cy="200" r="10" fill="#248a3d"/><text class="badge" x="6" y="204">6</text><text class="good" x="30" y="205">Paired computer, token, build fingerprint, tickets; a live console.</text>
-    <circle cx="10" cy="238" r="10" fill="#248a3d"/><text class="badge" x="6" y="242">7</text><text class="good" x="30" y="243">Up to 4 files in parallel and 16 isolated highways shared among them.</text>
+    <circle cx="10" cy="238" r="10" fill="#248a3d"/><text class="badge" x="6" y="242">7</text><text class="good" x="30" y="243">One file per CPU core (minus one) in parallel; 16 isolated highways.</text>
   </g>
   <rect x="744" y="650" width="592" height="76" rx="12" fill="#ffffff" stroke="#bfe0c8"/>
   <text class="h" x="764" y="680">Measured</text>

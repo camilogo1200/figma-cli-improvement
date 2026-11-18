@@ -983,7 +983,7 @@ partial | disconnected | uncertain (area HELD; only its own channel is blocked)
 
 | Level | Behavior |
 |---|---|
-| **Across files** | True parallel execution. Up to **4 file workers** run at the same time, including background tabs. Each Figma tab is its own renderer process. |
+| **Across files** | True parallel execution. **One file worker per CPU core, minus one,** runs at the same time, including background tabs. Each Figma tab is its own renderer process. |
 | **Within a file** | **One plugin thread, shared by turns.** Figma runs one plugin instance per file on that tab's main thread, so there is no true parallelism inside a file. The file channel and each highway have separate queues; their jobs take turns every 100 nodes and between batch items, so a short job never waits for another agent's whole batch. Only the job holding the turn runs between awaits. |
 | **Highways** | Up to **16** open at once across all files, one agent each. Each has its own queue (8 jobs in the plugin, including the active one). |
 | **Admission** | Up to **32 admitted jobs / 32 MiB** globally. A batch of many commands counts as one job. Filling the queue does not create executors. |
@@ -1199,7 +1199,7 @@ nodes, `gamma` waiting for its turn, and a committed reservation on the second f
 | **1** (figma-cli) | `eval` strings, one socket, no queue |
 | **2** | Structured ops, one FIFO queue per plugin, out-of-queue `ping`/`info`/`cancel` (`{busy, queued, current}`), `children` op, `commitUndo` after mutations, daemon-owned keepalive, cancellation on timeout/client-gone/close, typed client errors, UUID request ownership per socket |
 | **3** | File fencing (`verifyFile`, `expectedFileKey` checked in the daemon and again in the plugin), document lifecycle API, bounded diagnostics with process memory, disposable-copy memory studies, state-directory isolation |
-| **4** (current) | Paired file workers (≤ 4), page lanes, fair scheduling, durable zone reservations, automatic placement, recovery holds and proof-based reconciliation, live console telemetry. Later additions under the same protocol number: highways (lobby, per-agent ports, resume, turn-taking), holds scoped per channel, operator release, page sketches, read receipts and terminal pairing approval. The build fingerprint still forces daemon and plugin to match |
+| **4** (current) | Paired file workers (one per CPU core, minus one; 4 before 3.1.0), page lanes, fair scheduling, durable zone reservations, automatic placement, recovery holds and proof-based reconciliation, live console telemetry. Later additions under the same protocol number: highways (lobby, per-agent ports, resume, turn-taking), holds scoped per channel, operator release, page sketches, read receipts and terminal pairing approval. The build fingerprint still forces daemon and plugin to match |
 
 Release 3.0.0 is the first one packaged on its own: the `figma-ultimate` CLI, port 3049, the
 `~/.figma-cli-ultimate` settings folder and the plugin id `figma-cli-ultimate`. Stale daemons, stale
