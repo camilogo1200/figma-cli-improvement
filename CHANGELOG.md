@@ -7,6 +7,12 @@
   45 s or more after the request began. A cold heavy page can outlast one native load (the
   2026-10-20 failures took about ten seconds). Cancellations, bridge failures and the switch itself
   are never retried. A retried load's receipt carries `loadAttempts` and `loadErrors`.
+- The daemon connects one file per CPU core, minus one (31 on a 32-core machine). It used to stop at
+  4 files on every machine. `FIGMA_ULTIMATE_MAX_FILES` sets the number by hand; a machine with four
+  cores or fewer connects fewer files than before unless it is set. The limits on simultaneous
+  handshakes and saved reconnect credentials grow with the file limit. A refused window reads
+  "File limit reached: N files at once on this computer. Close the plugin in another file, then
+  retry." in place of "Worker capacity exceeded".
 
 ### Fixed
 - The plugin window's attention panel lists only its own file's held items, under the file's name,

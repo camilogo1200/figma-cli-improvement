@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { BridgeCoordinator } from './lib/bridge-coordinator.js';
+import { BridgeCoordinator, fileLimit } from './lib/bridge-coordinator.js';
 import { Highways } from './lib/bridge-highways.js';
 import { join } from 'node:path';
 import { DEFAULT_PORT, LIMITS, bridgeError, deadline } from './lib/bridge-protocol.js';
@@ -25,7 +25,7 @@ function validateRequest(req) {
 const approvals = new PairingApprovals();
 let idleTimer;
 function resetIdleTimer() { clearTimeout(idleTimer); idleTimer = setTimeout(shutdown, IDLE_TIMEOUT_MS); }
-const bridge = new BridgeCoordinator({ expectedBuild: BUILD.pluginBuild, activity: resetIdleTimer,
+const bridge = new BridgeCoordinator({ expectedBuild: BUILD.pluginBuild, activity: resetIdleTimer, maxWorkers: fileLimit(),
   journalPath: join(STATE_DIR, 'coordinator-journal.json'),
   pairingPath: join(STATE_DIR, 'paired-computers.json'), approvePairing: approvals.approve,
   resources: () => ({ sampledAt: Date.now(), source: 'Node process', memory: process.memoryUsage(), eventLoopDelayMs: { mean: Number.isFinite(loopDelay.mean) ? loopDelay.mean / 1e6 : null, p99: loopDelay.percentile(99) / 1e6 } }),

@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, mkdirSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { availableParallelism } from 'node:os';
 import { StructuredBridge } from './structured-bridge.js';
 import { PROTOCOL, LIMITS, bridgeError, deadline, immediate, validateEnvelope, pageNavigation, executionBudget } from './bridge-protocol.js';
 import { PairedComputers, pairingChallenge } from './bridge-pairing.js';
@@ -69,7 +70,15 @@ export class ReservationJournal {
   }
 }
 
+// How many Figma files may be connected at once: one per core, keeping one core
+// for the system. FIGMA_ULTIMATE_MAX_FILES sets it by hand.
+export function fileLimit(cores = availableParallelism(), override = process.env.FIGMA_ULTIMATE_MAX_FILES) {
+  const set = Number(override);
+  return Number.isSafeInteger(set) && set > 0 ? set : Math.max(1, Math.floor(cores) - 1);
+}
+
 export class BridgeCoordinator {
+  // The daemon passes fileLimit(); the fixed default keeps direct callers independent of the machine.
   constructor({ expectedBuild, journalPath, pairingPath, approvePairing, activity = () => {}, log = () => {}, resources = () => ({}), bridgeFactory, maxWorkers = 4 } = {}) {
     this.expectedBuild = expectedBuild; this.activity = activity; this.log = log; this.resources = resources;
     this.factory = bridgeFactory || (() => new StructuredBridge({ expectedBuild, activity, log }));
@@ -91,7 +100,8 @@ export class BridgeCoordinator {
   }
   attach(ws, origin) {
     if (origin && !['null', 'https://www.figma.com', 'https://figma.com'].includes(origin)) return ws.close(1008, 'Invalid origin');
-    if (this.handshakes.size >= 8) return ws.close(1008, 'Pairing capacity exceeded');
+    // Every file may reconnect in the same instant after a daemon restart.
+    if (this.handshakes.size >= Math.max(8, this.maxWorkers)) return ws.close(1008, 'Pairing capacity exceeded');
     this.handshakes.add(ws);
     const approval = new AbortController();
     let timer = setTimeout(() => { cleanup(); ws.close(1008, 'Pairing required'); }, 10000);
@@ -128,13 +138,13 @@ export class BridgeCoordinator {
         for (const w of this.workers.values()) if ((w.bridge.connected() || w.active) && (!fileKey || !w.fileKey || w.fileKey === fileKey)) throw new Error('Only one writing worker per file is allowed');
         const lifecycleBridge = [...this.workers.values()].find(w => w.fileKey === fileKey && w.bridge.lifecycleBusy)?.bridge;
         for (const [id, w] of this.workers) if (!w.bridge.connected() && !w.active) this.workers.delete(id);
-        if (this.workers.size >= this.maxWorkers) throw new Error('Worker capacity exceeded');
+        if (this.workers.size >= this.maxWorkers) throw new Error('File limit reached: ' + this.maxWorkers + ' files at once on this computer. Close the plugin in another file, then retry.');
         if (!deviceHash && (approved || msg.remember === true)) {
           deviceCredential = this.computers.issue(); deviceHash = this.computers.lookup(deviceCredential); auth.deviceHash = deviceHash;
         }
         this.credentials.set(auth.credential, auth);
         // Credentials are reconnect-only and bounded; old disconnected sessions must pair again.
-        while (this.credentials.size > 16) this.credentials.delete(this.credentials.keys().next().value);
+        while (this.credentials.size > Math.max(16, this.maxWorkers * 4)) this.credentials.delete(this.credentials.keys().next().value);
         const w = { ...auth, sessionEpoch: randomUUID(), bridge: lifecycleBridge || this.factory(), visible: true, mode: 'standard', active: null };
         w.bridge.onLateResult = msg => this.lateResult(w, msg);
         this.workers.set(w.workerId, w); cleanup();

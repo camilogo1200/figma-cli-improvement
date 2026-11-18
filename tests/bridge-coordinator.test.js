@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, realpathSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { BridgeCoordinator, ReservationJournal } from '../src/lib/bridge-coordinator.js';
+import { BridgeCoordinator, ReservationJournal, fileLimit } from '../src/lib/bridge-coordinator.js';
 import { PROTOCOL } from '../src/lib/bridge-protocol.js';
 
 const flush = () => new Promise(r => setImmediate(r));
@@ -195,6 +195,24 @@ test('pairing is one-use, identity-bound, origin checked, and rejects same-file 
   assert.equal(resumed.ready.workerId, a.ready.workerId); assert.notEqual(resumed.ready.sessionEpoch, a.ready.sessionEpoch);
   const stolen = worker(c, 'fileB', { credential: a.ready.credential }); assert.equal(stolen.ws.code, 1008);
   const wire = JSON.stringify(c.snapshot()); assert.ok(!wire.includes(a.ready.credential)); assert.ok(!wire.includes('pairingCode'));
+});
+test('the file limit follows the core count, and reconnect state scales with it', t => {
+  assert.equal(fileLimit(32, ''), 31); assert.equal(fileLimit(2, ''), 1); assert.equal(fileLimit(1, ''), 1);
+  assert.equal(fileLimit(8, '12'), 12); assert.equal(fileLimit(8, 'many'), 7); assert.equal(fileLimit(8, '0'), 7);
+  const c = setup(t, { maxWorkers: 20 }), files = Array.from({ length: 20 }, (_, i) => worker(c, 'file' + i));
+  assert.ok(files.every(f => f.ready));
+  const refused = worker(c, 'file20');
+  assert.equal(refused.ws.code, 1008); assert.match(refused.ws.reason, /^File limit reached: 20 files at once/);
+  // The first file still resumes as itself: reconnect credentials outnumber the files.
+  files[0].ws.close();
+  assert.equal(worker(c, 'file0', { credential: files[0].ready.credential }).ready.workerId, files[0].ready.workerId);
+  // A closed file frees its slot.
+  files[1].ws.close(); assert.ok(worker(c, 'file20').ready);
+  // Every file may be mid-handshake at once (all of them reconnect after a daemon restart).
+  const waiting = Array.from({ length: 20 }, () => { const ws = new Socket(); c.attach(ws); return ws; });
+  assert.ok(waiting.every(ws => ws.readyState === 1));
+  const late = new Socket(); c.attach(late); assert.equal(late.reason, 'Pairing capacity exceeded');
+  waiting.forEach(ws => ws.close());
 });
 test('same-page rectangles and gutters conflict, different pages and files are independent', async t => {
   const c = setup(t), a = worker(c), b = worker(c, 'fileB');

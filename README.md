@@ -144,7 +144,7 @@ every yield, and rollback that never deletes anyone else's nodes.
 | | Base plugin (figma-cli 2.2.5, Safe Mode) | figma-cli-ultimate |
 |---|---|---|
 | Runs on Figma Desktop 126+ | ✗ `eval()` is blocked | ✓ Structured JSON commands |
-| Several agents at once | One socket; the last connection wins | ✓ One highway each (up to 16); up to 4 files in parallel |
+| Several agents at once | One socket; the last connection wins | ✓ One highway each (up to 16); one file per CPU core, minus one, in parallel |
 | A quick job behind a long batch | No queue: requests race on one thread | ✓ Waits for at most one 100-node slice per other agent |
 | A socket drops | Everything in flight is rejected | ✓ Nothing cancelled; results kept up to 60 s |
 | An outcome is unknown | Not tracked | ✓ Only that highway is held; proof or release after review |
@@ -295,7 +295,7 @@ chain.
 | Area | Base plugin (stock figma-cli 2.2.5, Safe Mode) | This fork |
 |---|---|---|
 | Plugin execution | `eval()` of JS strings (blocked on Figma 126+) | Structured JSON ops interpreted in the plugin |
-| Connections | One plugin socket; last connection wins | Paired file workers (up to 4 files), each with a control socket plus one socket per highway |
+| Connections | One plugin socket; last connection wins | Paired file workers (one file per CPU core, minus one), each with a control socket plus one socket per highway |
 | Several agents | Share one socket and race | Each agent gets a **highway**: its own port, queue, holds, outbox and timeline row |
 | Scheduling | None; requests race | FIFO per channel; inside a file, channels **take turns every 100 nodes**; files run in parallel |
 | Cancellation | None | Queued jobs dropped instantly; running jobs stop at node boundaries and roll back owned nodes |
@@ -590,7 +590,8 @@ not the folder, so a global install and a local install of the same release shar
 
 Environment: `FIGMA_ULTIMATE_FILE` picks the default file for file commands, `FIGMA_ULTIMATE_STATE_DIR`
 moves the settings folder, and `FIGMA_ULTIMATE_PORT` moves the daemon for tests only (the plugin always
-dials 3049).
+dials 3049). The daemon connects one file per CPU core, minus one; `FIGMA_ULTIMATE_MAX_FILES` sets that
+number by hand (read when the daemon starts).
 
 ---
 
