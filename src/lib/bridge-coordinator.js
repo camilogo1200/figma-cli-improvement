@@ -587,5 +587,5 @@ export class BridgeCoordinator {
       if (wires[mode]) ws.send(wires[mode]);
     }
   }
-  close() { this.closed = true; clearInterval(this.timer); clearTimeout(this.uiTimer); this.uiTimer = null; this.progressWorkers.clear(); for (const ws of this.handshakes) ws.close(); for (const w of this.workers.values()) w.bridge.close(); }
+  close() { this.closed = true; clearInterval(this.timer); clearTimeout(this.uiTimer); this.uiTimer = null; this.progressWorkers.clear(); for (const ws of this.handshakes) ws.close(); for (const w of this.workers.values()) w.bridge.close(1001); }
 }

@@ -234,7 +234,7 @@ export class StructuredBridge {
     if (error) p.reject(error); else p.resolve(result);
   }
 
-  disconnect(s, reason) {
+  disconnect(s, reason, code = 1008) {
     if (this.session !== s) return;
     if ([...s.uncertain.values()].some(p => !p.navigationOnly) ||
         [...this.pending.values()].some(p => p.session === s && !p.control && !p.navigationOnly)) this.recoveryRequired = true;
@@ -244,7 +244,7 @@ export class StructuredBridge {
       this.settle(p, bridgeError('plugin-offline', reason, { requestId: p.id, outcome: 'uncertain' }));
     }
     s.uncertain.clear();
-    try { s.ws.close(1008, String(reason).replace(/[^\x20-\x7e]/g, '?').slice(0, 120)); }
+    try { s.ws.close(code, String(reason).replace(/[^\x20-\x7e]/g, '?').slice(0, 120)); }
     catch { s.ws.terminate?.(); }
     this.log('plugin-disconnected', { reason });
   }
@@ -257,5 +257,7 @@ export class StructuredBridge {
       lastSeen: s?.lastSeen || null, limits: this.limits, counts: { ...this.counts }, recent: [...this.recent] };
   }
 
-  close() { if (this.session) this.disconnect(this.session, 'Daemon shutting down'); }
+  // 1008 is a refusal: the plugin window stops until the user retries. A daemon that
+  // is only going away passes 1001, and the window reconnects by itself.
+  close(code = 1008) { if (this.session) this.disconnect(this.session, 'Daemon shutting down', code); }
 }

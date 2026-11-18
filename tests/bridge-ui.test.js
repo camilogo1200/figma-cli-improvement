@@ -87,6 +87,12 @@ test('policy close requires explicit plugin restart and cannot enter a reconnect
   h.main({ type: 'identity', busy: false }); assert.equal(h.sockets.length, 1);
   assert.equal(h.elements.get('status').textContent, 'Build mismatch'); assert.equal(h.timers.size, 0);
 });
+test('a daemon that is going away leaves the window waiting to reconnect by itself', () => {
+  const h = harness(), ws = h.connect(); ws.close(1001, 'Daemon shutting down');
+  assert.match(h.elements.get('status').textContent, /^Waiting for the bridge/); assert.equal(h.timers.size, 1);
+  h.main({ type: 'identity', busy: false }); assert.equal(h.sockets.length, 2);
+  h.window.beforeunload();
+});
 test('yield watchdog timers are cleared on acknowledgements and UI teardown', () => {
   const h = harness(); h.main({ type: 'yield', k: 1 }); assert.equal(h.messages.at(-1).type, 'yielded');
   assert.equal(h.timers.size, 1); h.main({ type: 'yield-finished', k: 1 }); assert.equal(h.timers.size, 0);

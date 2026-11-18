@@ -214,6 +214,11 @@ test('the file limit follows the core count, and reconnect state scales with it'
   const late = new Socket(); c.attach(late); assert.equal(late.reason, 'Pairing capacity exceeded');
   waiting.forEach(ws => ws.close());
 });
+test('a daemon shutdown asks plugin windows to reconnect, never to stop', t => {
+  const c = setup(t), a = worker(c), b = worker(c, 'fileB');
+  c.close();
+  for (const w of [a, b]) { assert.equal(w.ws.code, 1001); assert.equal(w.ws.reason, 'Daemon shutting down'); }
+});
 test('same-page rectangles and gutters conflict, different pages and files are independent', async t => {
   const c = setup(t), a = worker(c), b = worker(c, 'fileB');
   const first = submit(c, a, 'r1');
