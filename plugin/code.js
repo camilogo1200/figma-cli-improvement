@@ -61,10 +61,10 @@ function resizeWindow(width, height, dx, dy) {
   } catch (e) {}
 }
 
-var VERSION = '3.0.0-ultimate';
+var VERSION = '3.1.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = '34bd1e41519b0c772d55045c'; // stamped by bridge/launcher.mjs build
+var BUILD = 'c34cd81fb358c8dd3dd83c79'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;

@@ -1,6 +1,6 @@
 {
   "name": "figma-cli-ultimate",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Multi-agent bridge for Figma Desktop: one private highway per agent, turn-taking, scoped recovery and a live worker console.",
   "author": "Cristhian Camilo Gómez Narváez",
   "contributors": [

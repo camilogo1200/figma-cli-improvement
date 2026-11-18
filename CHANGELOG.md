@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 — 2026-11-17
 
 ### Changed
 - Page select attempts a native `loadAsync()` rejection again, up to 3 attempts. No attempt starts
