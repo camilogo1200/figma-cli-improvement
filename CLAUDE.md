@@ -15,6 +15,7 @@ CLI. README.md is the full documentation; this file is the short version for age
 | "build these screens" | `figma-ultimate layout layout.json` (auto-placed, reserved zone) |
 | "run these commands" | `figma-ultimate send commands.json` (array = one batch, ≤128) |
 | "screenshot this" | `figma-ultimate export <nodeId> out.png` |
+| "delete these frames / this page" | `figma-ultimate remove <nodeId…>` / `figma-ultimate page delete <pageId>`, only what the user named |
 | several files open | add `--file "<name part>"` or `--file <fileKey>` |
 | "use it from Claude Code / Codex" | `figma-ultimate skills install` (`--project` for this folder) |
 

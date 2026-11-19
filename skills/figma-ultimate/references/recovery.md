@@ -18,7 +18,7 @@ read the outcome, do only what that outcome allows, and hand anything unclear to
 
 | Outcome | Meaning | You may |
 |---|---|---|
-| `not-started` | Nothing reached the canvas. Typical kinds: `invalid-request`, `plugin-offline`, `ambiguous-file`, `daemon-down`, `build-mismatch`, `queue-full`, `zone-conflict`, `layout-size-required`, `unsupported-scope`, `cancelled`; `skipped` for batch items after a failure | Fix the cause and send the same request again |
+| `not-started` | Nothing reached the canvas. Typical kinds: `invalid-request`, `plugin-offline`, `ambiguous-file`, `daemon-down`, `build-mismatch`, `queue-full`, `zone-conflict`, `layout-size-required`, `unsupported-scope`, `cancelled`; `last-page` and `page-busy` for a page delete; `skipped` for batch items after a failure | Fix the cause and send the same request again (`page-busy`: once the other work on that page is done) |
 | `rolled-back` | A `create` failed or was cancelled, and the plugin removed every node it had created. Nothing that existed before was touched | Fix and send again |
 | `partial` | A batch stopped: items with `success: true` happened, the failed item has its own outcome, later items were skipped. A single write to an existing node (`update`, `remove`, `reactions`, `page`, …) that threw is also `partial` | Stop and report (see below) |
 | `failed` | A command failed after it started | Stop and report |

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Pages can be deleted: `{"op":"page","action":"delete","id":"…"}`, or
+  `figma-ultimate page delete <pageId>`. It is refused, `not-started`, for the file's only page
+  (`last-page`) and for a page that other work is using (`page-busy`): a zone on it in flight or
+  held, a task lane bound to it, held work in the file, or another queued or running job aimed at
+  it. The daemon checks at admission and again at the job's turn; the plugin checks its own running
+  and queued jobs again after the last await. The open page is left for its neighbour first. The
+  result names the deleted page and counts its top-level nodes, and the page leaves the console map.
+- `figma-ultimate remove <nodeId…>` deletes frames, sections, groups or other nodes by id.
+
+### Changed
+- `remove` looks up every id before deleting anything. A page or the document among them refuses the
+  whole request, `not-started`; it used to pass a page straight to Figma.
+
 ## 3.1.0 — 2026-11-17
 
 ### Changed

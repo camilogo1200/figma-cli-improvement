@@ -555,6 +555,10 @@ test('the canvas map shows every connected file, live zones with progress, write
   h.main({type:'page-sketch',pageId:'p1',page:'Home',roots:2,cols:4,rows:2,extent:{x:0,y:0,width:100,height:100},cells:'ff',measuredAt:9500});
   assert.equal(ws.sent.at(-1).type,'page-sketch','the local sketch is shared with the daemon');
   assert.match(map().querySelector('[data-key="p1"]').textContent,/2 top-level frames/);
+  h.main({type:'page-sketch',pageId:'p1',removed:true});
+  assert.deepEqual(ws.sent.at(-1),{type:'page-sketch',pageId:'p1',removed:true},'a deleted page is dropped by the daemon too');
+  assert.match(map().querySelector('[data-key="p1"]').textContent,/No artwork sketch yet/,'a deleted page loses its sketch');
+  h.main({type:'page-sketch',pageId:'p1',page:'Home',roots:2,cols:4,rows:2,extent:{x:0,y:0,width:100,height:100},cells:'ff',measuredAt:9600});
   const picker=h.elements.get('zone-page');assert.deepEqual([...picker.options].map(o=>o.value),['','fileA','fileB']);
   picker.change({target:{value:'fileB'}});assert.doesNotMatch(map().textContent,/Example/);assert.match(map().textContent,/Other file/);
   h.window.beforeunload();

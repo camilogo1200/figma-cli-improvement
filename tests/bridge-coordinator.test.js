@@ -454,3 +454,35 @@ test('job transitions publish promptly and progress bursts send one small delta 
   const ended=a.ws.sent.filter(m=>m.type==='telemetry').at(-1);assert.equal(ended.workers[0].current,null);assert.equal(ended.lanes.length,0);assert.equal(ended.recent[0].op,'find');
   assert.ok(ended.sequence>deltas[0].sequence);
 });
+
+test('page delete is refused while a zone, a lane or later work is bound to that page', async t => {
+  const c = setup(t), a = worker(c);
+  const del = id => c.dispatch('cmd', { cmd: { op: 'page', action: 'delete', id } }, { coordination: a.route });
+  const zone = submit(c, a, 'r1'); await flush();
+  await assert.rejects(del('page1'), { kind: 'page-busy', outcome: 'not-started' });
+  finish(a); await zone;
+  const lane = c.createLane({ pageId: 'page3', label: 'Onboarding' }, a.route);
+  await assert.rejects(del('page3'), { kind: 'page-busy', outcome: 'not-started', message: /task lane/ });
+  c.removeLane(lane.laneId, a.route);
+  await assert.rejects(del('bad id!'), { kind: 'invalid-request', outcome: 'not-started' });
+  // Checked again at its turn: a create admitted behind it now aims at the page.
+  const first = c.dispatch('cmd', { cmd: { op: 'update', id: 'x', spec: {} } }, { coordination: a.route });
+  const queued = del('page9');
+  const create = c.dispatch('cmd', { cmd: { op: 'create', parent: 'page9', select: false, zoom: false, spec: { name: 'n' } } }, { coordination: a.route });
+  await flush(); finish(a); await first;
+  await assert.rejects(queued, { kind: 'page-busy', outcome: 'not-started' });
+  await flush(); assert.equal(a.ws.sent.filter(m => m.cmd?.op === 'page').length, 0, 'the refused delete never reached the plugin');
+  finish(a); await create;
+  const done = del('page9'); await flush();
+  assert.equal(a.ws.sent.filter(m => m.action === 'cmd').at(-1).cmd.action, 'delete');
+  finish(a, { result: { deleted: { id: 'page9', name: 'Old' }, roots: 0, current: { id: 'page1', name: 'Home' } } });
+  assert.equal((await done).deleted.id, 'page9'); assert.equal(c.quarantined('fileA'), false);
+});
+
+test('a deleted page leaves the console map', t => {
+  const c = setup(t), a = worker(c);
+  a.ws.receive({ type: 'page-sketch', pageId: 'page1', page: 'Checkout', roots: 2, cols: 4, rows: 2, extent: { x: 0, y: 0, width: 400, height: 200 }, cells: 'f0', measuredAt: 5 });
+  assert.equal(c.snapshot().sketches.length, 1);
+  a.ws.receive({ type: 'page-sketch', pageId: 'page1', removed: true });
+  assert.equal(c.snapshot().sketches.length, 0);
+});

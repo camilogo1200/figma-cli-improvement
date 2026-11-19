@@ -16,8 +16,9 @@ switch to the **figma-ultimate-setup** skill (start with `figma-ultimate doctor`
 
 - Never use the original figma-cli: no `figma-cli render`, `render-batch`, `eval`, `npx figma-use`.
   Their rules (and any AGENTS.md written by figma-cli) do not apply here.
-- Never delete or "clean up" nodes the user did not ask you to delete, and never find nodes to remove
-  by name.
+- Never delete or "clean up" nodes or pages the user did not ask you to delete, and never find nodes
+  to remove by name. Deleting: `figma-ultimate remove <nodeId…>` for frames, sections and other
+  nodes, `figma-ultimate page delete <pageId>` for a page.
 - Never restart the bridge, reload or close the plugin, or edit `~/.figma-cli-ultimate` without the
   user's OK.
 

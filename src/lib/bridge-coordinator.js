@@ -13,6 +13,8 @@ const key = (v, name) => { if (typeof v !== 'string' || !/^[\w:.-]{1,128}$/.test
 const READS = new Set(['ping', 'info', 'verifyFile', 'inspectReservation', 'find', 'children', 'tree', 'exportImage', 'audit', 'fonts', 'layoutInfo']);
 const isRead = c => READS.has(c.op) || (c.op === 'page' && (!c.action || c.action === 'list'));
 const WRITES = new Set(['create', 'update', 'remove', 'reactions', 'flowStart', 'page', 'image', 'select', 'undo', 'reload']);
+const deletesPage = c => c?.op === 'page' && c.action === 'delete';
+const commandsOf = j => j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds;
 const categoryOf = (action, c) => action === 'cmd-batch' ? 'batch' : pageNavigation(c) ? 'control' : c.op === 'exportImage' ? 'screenshot' : isRead(c) ? 'query' : immediate(c) ? 'control' : 'change';
 // Receipts say where a request read or wrote and how much came back, never what.
 const itemsOf = value => Array.isArray(value) ? value.length : Array.isArray(value?.created) ? value.created.length : Array.isArray(value?.bounds) ? value.bounds.length : null;
@@ -241,6 +243,21 @@ export class BridgeCoordinator {
   // Only zones that are still in flight or unresolved count. A committed zone is
   // ordinary artwork and no longer blocks anyone (it still shapes placement).
   protected(fileKey) { return [...this.journal.records.values()].some(r => r.fileKey === fileKey && ['reserved', 'running', 'held'].includes(r.state)); }
+  // A page is deleted only when nothing else is bound to it: no zone in flight or
+  // held, no task lane, no held work anywhere in the file (it carries no page), no
+  // other queued or running job aimed at it. The plugin checks its own jobs again.
+  refuseBusyPage(w, pageId, self) {
+    const busy = why => fail('page-busy', 'Page not deleted: ' + why, { pageId });
+    if (w.fileKey) {
+      if ([...this.journal.records.values()].some(r => r.fileKey === w.fileKey && r.pageId === pageId && ['reserved', 'running', 'held'].includes(r.state))) busy('a zone on this page is still being built or is held for review');
+      if ([...this.journal.taskLanes.values()].some(l => l.fileKey === w.fileKey && l.pageId === pageId)) busy('a task lane is bound to this page; remove the lane first');
+      if ([...this.journal.fileHolds.values()].some(h => h.state === 'held' && (h.fileKey === w.fileKey || h.fileKey === '*'))) busy('held work in this file needs review first');
+    }
+    for (const j of this.jobs.values()) {
+      if (j === self || (j.worker !== w && (!w.fileKey || j.worker.fileKey !== w.fileKey))) continue;
+      if ((j.lease || j.autoPlan)?.pageId === pageId || commandsOf(j).some(c => c && (c.parent === pageId || c.pageId === pageId || c.id === pageId))) busy('other queued or running work targets this page');
+    }
+  }
   // The operator inspected the canvas and accepts the result: frees a hold that has
   // no plugin proof (unscoped writes, closed highways). Never automatic.
   release(requestId, route) {
@@ -287,6 +304,7 @@ export class BridgeCoordinator {
     if (this.lifecycleBusy || this.channels().some(x => x.fileKey === w.fileKey && x.bridge.lifecycleBusy)) fail('worker-busy', 'Document lifecycle is active');
     if (w.bridge.recoveryRequired || this.quarantined(w)) fail('worker-uncertain', w.kind === 'highway'
       ? 'This highway has held work requiring review; other highways are unaffected' : 'This file has held work requiring reconciliation');
+    for (const c of commands) if (deletesPage(c)) this.refuseBusyPage(w, key(c.id, 'pageId'), null);
     const timeoutMs = deadline(options.timeoutMs, executionBudget(action, payload)), queueTimeoutMs = deadline(options.queueTimeoutMs, LIMITS.queueTimeoutMs);
     if (options.signal?.aborted) fail('client-gone', 'Client disconnected before admission');
     const bytes = Buffer.byteLength(JSON.stringify(payload));
@@ -381,6 +399,8 @@ export class BridgeCoordinator {
     this.schedulePublish();
     try {
       if (this.quarantined(w)) fail('worker-uncertain', 'A previous job requires reconciliation');
+      // Checked again at its turn: work admitted after it may now target the page.
+      for (const c of commandsOf(j)) if (deletesPage(c)) this.refuseBusyPage(w, c.id, j);
       if (j.autoPlan) {
         const plan = j.autoPlan;
         j.phase = 'planning';

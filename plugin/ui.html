@@ -895,8 +895,9 @@ function observe(msg) {
   }
   if (msg.type === 'page-sketch' && typeof msg.pageId === 'string') {
     // Local copy for this file's map; the daemon validates and shares it with other windows.
+    // A deleted page sends removed:true and leaves the map.
     model.sketches.delete(msg.pageId);
-    model.sketches.set(msg.pageId, { pageId: msg.pageId, page: msg.page, roots: msg.roots, cols: msg.cols, rows: msg.rows, extent: msg.extent, cells: msg.cells, measuredAt: msg.measuredAt });
+    if (msg.removed !== true) model.sketches.set(msg.pageId, { pageId: msg.pageId, page: msg.page, roots: msg.roots, cols: msg.cols, rows: msg.rows, extent: msg.extent, cells: msg.cells, measuredAt: msg.measuredAt });
     while (model.sketches.size > 12) model.sketches.delete(model.sketches.keys().next().value);
   }
   while (model.jobs.size > 16) model.jobs.delete(model.jobs.keys().next().value);

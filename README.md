@@ -609,6 +609,8 @@ figma-ultimate tree <nodeId>
 figma-ultimate export <nodeId> out.png
 figma-ultimate send commands.json           # one command object or an array (= batch)
 figma-ultimate layout layout.json           # {"specs":[…], "pageId":"…", "label":"…"}: placed in free space
+figma-ultimate remove <nodeId…>             # delete frames, sections, groups or other nodes by id
+figma-ultimate page delete <pageId>         # delete a page (never the only one, never one in use)
 figma-ultimate cancel [requestId]
 figma-ultimate highways                     # open highways: agent, file, port, both ends, queue
 figma-ultimate workers                      # full coordinator status
@@ -634,8 +636,16 @@ long-running agents should use a highway ([§5.4](#54-highways-one-private-port-
   fields. An auto-layout axis without `w`/`h` keeps its sizing, and text keeps its font, colour and
   wrapping unless `font/weight/style/italic`, `color` or `w` are sent (`{weight:'bold'}` keeps the family).
 - **`image`** `{op:'image', base64}` returns a reusable image hash. Identical bytes reuse the same hash.
-- **`page`** `{op:'page', action:'list'|'create'|'select'|'rename'|'update'}`. Use explicit page IDs as
+- **`page`** `{op:'page', action:'list'|'create'|'select'|'rename'|'update'|'delete'}`. Use explicit page IDs as
   parents for page-specific builds; creation never needs the page to be visible.
+- **`page` `delete`** `{op:'page', action:'delete', id}` returns `{deleted:{id,name}, roots, current}`.
+  Everything that can refuse it comes first and ends `not-started`: the file's only page
+  (`last-page`); a zone on the page still in flight or held, a task lane bound to it, held work
+  anywhere in the file, or another queued or running job aimed at it (`page-busy`, checked by the
+  daemon at admission and again at its turn, and by the plugin against what it is running); a failed
+  load or switch. If the page is the open one, the user is moved to its neighbour before it goes.
+- **`remove`** `{op:'remove', ids}` deletes nodes by id and returns `{removed}`. Every id is looked up
+  first, and a page or the document among them refuses the whole request.
 - **`fonts`** `{op:'fonts', query}` lists families and styles. Weight keywords map to style names,
   including the `Semi Bold` / `SemiBold` / `Semibold` spellings.
 

@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.1.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = 'c34cd81fb358c8dd3dd83c79'; // stamped by bridge/launcher.mjs build
+var BUILD = '717f2f3c5c1911dd79c3d8a8'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -921,13 +921,21 @@ var OPS = {
     return walk(root, 0);
   },
 
+  // Every id is looked up before anything goes: a page or the document refuses
+  // the whole request, untouched. Pages go through { op: 'page', action: 'delete' }.
   remove: async function (cmd) {
-    var ids = cmd.ids || (cmd.id ? [cmd.id] : []);
-    var removed = [];
-    for (var i = 0; i < ids.length; i++) {
-      var n = await checked(figma.getNodeByIdAsync(ids[i]));
+    var ids = cmd.ids || (cmd.id ? [cmd.id] : []), found = [], removed = [];
+    try {
+      for (var i = 0; i < ids.length; i++) found.push(await checked(figma.getNodeByIdAsync(ids[i])));
+    } catch (e) { throw failure(e && e.kind || 'plugin', String(e && e.message || e), 'not-started'); }
+    for (var j = 0; j < found.length; j++) {
+      if (found[j] && found[j].type === 'PAGE') throw failure('invalid-request', 'remove does not delete pages; use {"op":"page","action":"delete","id":"' + ids[j] + '"}', 'not-started');
+      if (found[j] && found[j].type === 'DOCUMENT') throw failure('invalid-request', 'The document cannot be removed', 'not-started');
+    }
+    for (var k = 0; k < found.length; k++) {
       checkCancelled();
-      if (n) { noteTarget(n, 'write', removed.length > 0); removed.push(ids[i]); n.remove(); }
+      var n = found[k];
+      if (n && !n.removed) { noteTarget(n, 'write', removed.length > 0); removed.push(ids[k]); n.remove(); }
       await tick();
     }
     return { removed: removed };
@@ -952,6 +960,7 @@ var OPS = {
    *   { op: 'page', action: 'create', name, select }   -> new page (made current unless select === false)
    *   { op: 'page', action: 'select', id }             -> make a page current (create targets it)
    *   { op: 'page', action: 'rename', id, name }
+   *   { op: 'page', action: 'delete', id }             -> { deleted, roots, current } (see deletePage)
    * documentAccess is dynamic-page, so switching goes through setCurrentPageAsync.
    */
   page: async function (cmd) {
@@ -959,6 +968,7 @@ var OPS = {
     function brief(p) { return { id: p.id, name: p.name, current: p.id === figma.currentPage.id }; }
     if (action === 'list') return figma.root.children.map(brief);
     if (action === 'select') return selectPage(cmd);
+    if (action === 'delete') return deletePage(cmd);
     if (action === 'create') {
       if (!cmd.name) throw new Error('page create requires name');
       var created = figma.createPage();
@@ -980,7 +990,7 @@ var OPS = {
       pg.name = cmd.name;
       return brief(pg);
     }
-    throw new Error('Unknown page action "' + action + '". Known: list, create, select, rename, update');
+    throw new Error('Unknown page action "' + action + '". Known: list, create, select, rename, update, delete');
   },
 
   /**
@@ -1240,6 +1250,62 @@ async function selectPage(cmd) {
       switching ? 'failed' : 'not-started');
     error.details = { navigation: navigation }; throw error;
   }
+}
+// Deleting a page (figma-cli-ultimate addition). Every refusal comes before the
+// page changes and ends not-started: an unknown id, the file's only page, a page
+// another job is using, a failed load or switch, a cancellation. When the page is
+// the one the user has open, they are moved to its neighbour first. The checks
+// run again after the last await, since the user and other jobs act in between.
+//   { op: 'page', action: 'delete', id } -> { deleted: { id, name }, roots, current: { id, name } }
+async function deletePage(cmd) {
+  var phase = 'lookup', previous = figma.currentPage.id, page = null;
+  try {
+    if (typeof cmd.id !== 'string' || !cmd.id || cmd.id.length > 128) throw failure('invalid-request', 'page delete requires a page id', 'not-started');
+    page = figma.root.children.find(function (p) { return p.id === cmd.id; });
+    if (!page || page.type !== 'PAGE') throw failure('invalid-request', 'Page not found: ' + cmd.id, 'not-started');
+    noteTarget(page, 'write');
+    refuseBusyPage(page);
+    phase = 'load';
+    if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
+    if (page === figma.currentPage) {
+      var pages = figma.root.children, at = pages.indexOf(page), next = pages[at + 1] || pages[at - 1];
+      phase = 'switch';
+      if (typeof next.loadAsync === 'function') await checked(next.loadAsync());
+      await checked(figma.setCurrentPageAsync(next));
+    }
+    phase = 'delete';
+    refuseBusyPage(page);
+    if (page === figma.currentPage) throw failure('page-busy', 'The page was opened again', 'not-started');
+  } catch (cause) {
+    // Nothing on the canvas changed up to here, whatever stopped the delete.
+    // Native errors may be non-extensible; wrap rather than annotating them.
+    var error = failure(cause && cause.kind || 'page-delete', 'Page not deleted: ' + String(cause && cause.message || cause).slice(0, 512), 'not-started');
+    error.details = { phase: phase, requestedPageId: typeof cmd.id === 'string' ? cmd.id.slice(0, 128) : null,
+      previousPageId: previous, currentPageId: figma.currentPage.id, artworkChanged: false };
+    throw error;
+  }
+  var deleted = { id: page.id, name: page.name }, roots = page.children.length;
+  page.remove();
+  delete sketchAt[deleted.id];
+  figma.ui.postMessage({ type: 'page-sketch', pageId: deleted.id, removed: true });
+  return { deleted: deleted, roots: roots, current: { id: figma.currentPage.id, name: figma.currentPage.name } };
+}
+// A page stays while another job reads or builds on it, or waits in a queue with
+// it as its target. Work that reaches the page only through node ids is not visible here.
+function refuseBusyPage(page) {
+  if (page.removed) throw failure('invalid-request', 'The page no longer exists', 'not-started');
+  if (figma.root.children.length < 2) throw failure('last-page', 'It is the only page in the file', 'not-started');
+  var id = page.id;
+  function aims(c) { return !!c && (c.parent === id || c.pageId === id || c.id === id); }
+  var busy = activeJobs.some(function (j) {
+    return j !== current && ((j.lease && j.lease.pageId === id) || j.zonePage === page || j.targetPage === page || j.touched.indexOf(page) !== -1);
+  }) || Object.keys(channels).some(function (name) {
+    return channels[name].waiting.some(function (job) {
+      var m = job.msg;
+      return (m.lease && m.lease.pageId === id) || (m.type === 'cmd' ? [m.cmd] : m.cmds).some(aims);
+    });
+  });
+  if (busy) throw failure('page-busy', 'Another job is using this page', 'not-started');
 }
 async function checked(promise) { var value = await promise; checkCancelled(); if (current && current.zonePage) validateZoneScene(false); return value; }
 function failure(kind, message, outcome) {

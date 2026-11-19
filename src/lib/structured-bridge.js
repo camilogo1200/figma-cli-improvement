@@ -138,7 +138,11 @@ export class StructuredBridge {
       this.noteCurrent(s, msg.state?.current);
       return;
     }
-    if (msg.type === 'page-sketch') { const value = sketch(msg); if (value) remember(s.sketches, value.pageId, value, 12); return; }
+    if (msg.type === 'page-sketch') {
+      // A deleted page leaves the console map.
+      if (msg.removed === true) { if (typeof msg.pageId === 'string') s.sketches.delete(msg.pageId); return; }
+      const value = sketch(msg); if (value) remember(s.sketches, value.pageId, value, 12); return;
+    }
     if (msg.type !== 'result' && msg.type !== 'batch-result') return;
     const request = p?.session === s ? p : s.uncertain.get(msg.id);
     if (request && !request.navigationOnly && (msg.outcome === 'uncertain' ||

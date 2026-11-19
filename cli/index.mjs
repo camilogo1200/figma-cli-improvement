@@ -56,6 +56,8 @@ Working with files (JSON output; --file NAME|KEY when several files are connecte
   figma-ultimate export <nodeId> [out.png]
   figma-ultimate send <commands.json>  One command or an array (a batch)
   figma-ultimate layout <layout.json>  {"specs":[…], "label":"…"}: placed in free space
+  figma-ultimate remove <nodeId…>      Delete frames, sections, groups or any other node by id
+  figma-ultimate page delete <pageId>  Delete a page (refused for the only page or a page in use)
   figma-ultimate cancel [requestId]
   figma-ultimate highways | lanes | workers | diagnostics
 `;
@@ -326,6 +328,13 @@ async function fileCommand(sub, rest, flags) {
       if (!rest[0]) throw new fig.BridgeError('invalid-request', 'tree needs a node id', { outcome: 'not-started' });
       return run({ op: 'tree', id: rest[0], depth: 4 });
     case 'cancel': return run({ op: 'cancel', ...(rest[0] ? { id: rest[0] } : {}) });
+    case 'remove':
+      if (!rest.length) throw new fig.BridgeError('invalid-request', 'remove needs one or more node ids', { outcome: 'not-started' });
+      return run({ op: 'remove', ids: rest });
+    case 'page':
+      if (rest[0] !== 'delete' || !rest[1] || rest.length > 2) throw new fig.BridgeError('invalid-request', 'Use: figma-ultimate page delete <pageId>', { outcome: 'not-started' });
+      // A heavy page is loaded before it goes, and so is its neighbour when it is the open one.
+      return run({ op: 'page', action: 'delete', id: rest[1] }, 120000);
     case 'children': {
       const kids = await run({ op: 'children', ...(rest[0] ? { prefix: rest[0] } : {}) }, 120000), seen = new Map();
       for (const k of kids) seen.set(k.name, (seen.get(k.name) || 0) + 1);

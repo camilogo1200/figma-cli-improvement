@@ -34,7 +34,13 @@ or a smaller section.
 |---|---|
 | `figma-ultimate layout layout.json` | `{"specs":[…], "pageId":"…", "label":"…"}`. New top-level frames, each with `w` and `h`, 1 to 64 roots. Placed in free space on `pageId` (default: the visible page) and reserved while they are built |
 | `figma-ultimate send commands.json` | one command object, or an array of up to 128 commands run in order as one batch |
+| `figma-ultimate remove <nodeId…>` | none. Deletes those nodes (frames, sections, groups, layers) and prints `{removed}`. Never pages |
+| `figma-ultimate page delete <pageId>` | none. Deletes the page and prints `{deleted, roots, current}`. Refused for the only page and for a page other work is using |
 | `figma-ultimate cancel [requestId]` | stops one request, or everything running and queued for that file |
+
+Delete only what the user named. Look the ids up first (`pages`, `children`, `tree`), check them
+with the user when names repeat, and report what went: the result names the deleted page and how
+many top-level nodes it held.
 
 `layout` roots: give all of them `x`/`y` (kept as offsets inside the reserved area) or none, keep
 them at least 24 px apart, and put overlapping pieces inside one frame. `SECTION` and `INSTANCE`

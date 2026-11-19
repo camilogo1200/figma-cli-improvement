@@ -856,3 +856,77 @@ test('interleaved zone jobs on one page ignore each other’s hidden scaffolding
   assert.equal(h.result(a).result.created.length, 1, JSON.stringify(h.result(a)));
   assert.equal(h.messages[resultIndex(h, b)].result.created.length, 1, JSON.stringify(h.messages[resultIndex(h, b)]));
 });
+
+// Deleting pages and nodes.
+const addPage = (h, name) => { const p = h.node('PAGE'); p.name = name; h.figma.root.appendChild(p); return p; };
+
+test('page delete removes a page that is not open and reports what went', async () => {
+  const h = harness(), other = addPage(h, 'Old flows');
+  for (let i = 0; i < 3; i++) other.appendChild(h.node('FRAME'));
+  const result = await h.done(h.send({ op: 'page', action: 'delete', id: other.id }));
+  assert.equal(result.error, undefined, JSON.stringify(result));
+  assert.deepEqual(result.result, { deleted: { id: other.id, name: 'Old flows' }, roots: 3, current: { id: h.page.id, name: 'PAGE' } });
+  assert.equal(other.removed, true); assert.deepEqual(h.figma.root.children, [h.page]);
+  assert.ok(h.messages.some(m => m.type === 'page-sketch' && m.pageId === other.id && m.removed === true), 'the page leaves the console map');
+  assert.equal(h.messages.some(m => m.type === 'page-sketch' && m.pageId === other.id && !m.removed), false);
+});
+
+test('page delete moves the user off the open page to its neighbour first', async () => {
+  const h = harness(), second = addPage(h, 'Second'), third = addPage(h, 'Third'), switched = [];
+  let loaded = 0; second.loadAsync = async () => { loaded++; };
+  h.figma.setCurrentPageAsync = async p => { switched.push(p.id); h.figma.currentPage = p; };
+  h.figma.currentPage = second;
+  const result = await h.done(h.send({ op: 'page', action: 'delete', id: second.id }));
+  assert.deepEqual(switched, [third.id], 'the next page; the previous one only for the last page');
+  assert.equal(loaded, 1); assert.equal(second.removed, true);
+  assert.deepEqual(result.result.current, { id: third.id, name: 'Third' });
+  h.figma.currentPage = third;
+  await h.done(h.send({ op: 'page', action: 'delete', id: third.id }));
+  assert.deepEqual(switched, [third.id, h.page.id]); assert.deepEqual(h.figma.root.children, [h.page]);
+});
+
+test('page delete refuses the only page, unknown ids and a failed switch without touching the file', async () => {
+  const h = harness();
+  let result = await h.done(h.send({ op: 'page', action: 'delete', id: h.page.id }));
+  assert.equal(result.kind, 'last-page'); assert.equal(result.outcome, 'not-started');
+  assert.equal(result.details.artworkChanged, false); assert.equal(h.page.removed, false);
+  result = await h.done(h.send({ op: 'page', action: 'delete', id: 'nope' }));
+  assert.equal(result.kind, 'invalid-request'); assert.equal(result.outcome, 'not-started');
+  const frame = h.node('FRAME'); h.page.appendChild(frame);
+  result = await h.done(h.send({ op: 'page', action: 'delete', id: frame.id }));
+  assert.equal(result.kind, 'invalid-request'); assert.equal(frame.removed, false, 'a frame id is not a page');
+  addPage(h, 'Other');
+  h.figma.setCurrentPageAsync = async () => { throw Object.freeze(new Error('Native switch failed')); };
+  result = await h.done(h.send({ op: 'page', action: 'delete', id: h.page.id }));
+  assert.equal(result.kind, 'page-delete'); assert.equal(result.outcome, 'not-started');
+  assert.equal(result.details.phase, 'switch'); assert.match(result.error, /Native switch failed/);
+  assert.equal(h.page.removed, false); assert.equal(h.figma.root.children.length, 2);
+});
+
+test('page delete refuses a page another channel is still building on', async () => {
+  let refused;
+  const h = harness({ onYield: (_, h) => { refused ??= sendOn(h, 'hw-a', { op: 'page', action: 'delete', id: target.id }); } }); road(h);
+  const target = addPage(h, 'Busy');
+  const long = h.send({ op: 'create', parent: target.id, spec: many(400), select: false });
+  await until(() => resultIndex(h, refused) >= 0);
+  const answer = h.messages[resultIndex(h, refused)];
+  assert.equal(answer.kind, 'page-busy'); assert.equal(answer.outcome, 'not-started');
+  await h.done(long);
+  assert.equal(h.result(long).result.created.length, 1); assert.equal(target.removed, false);
+  const later = await h.done(h.send({ op: 'page', action: 'delete', id: target.id }));
+  assert.equal(later.error, undefined); assert.equal(target.removed, true, 'free once the other job is done');
+});
+
+test('remove deletes nodes but refuses pages and the document before deleting anything', async () => {
+  const h = harness(), other = addPage(h, 'Other'), a = h.node('FRAME'), b = h.node('SECTION');
+  h.page.appendChild(a); h.page.appendChild(b);
+  for (const id of [other.id, h.figma.root.id]) {
+    const result = await h.done(h.send({ op: 'remove', ids: [a.id, id] }));
+    assert.equal(result.kind, 'invalid-request'); assert.equal(result.outcome, 'not-started');
+    assert.equal(a.removed, false, 'the frame listed first is still there');
+  }
+  assert.match((await h.done(h.send({ op: 'remove', ids: [other.id] }))).error, /"action":"delete"/);
+  const result = await h.done(h.send({ op: 'remove', ids: [a.id, 'gone', b.id, a.id] }));
+  assert.deepEqual(result.result, { removed: [a.id, b.id] });
+  assert.equal(a.removed, true); assert.equal(b.removed, true); assert.equal(other.removed, false);
+});

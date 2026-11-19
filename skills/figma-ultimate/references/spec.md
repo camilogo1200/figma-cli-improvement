@@ -22,6 +22,7 @@ array of up to 128 as one batch. Field names are case-sensitive; most enum value
 | | `{"op":"page","action":"rename","id":"…","name":"…"}` | |
 | | `{"op":"page","action":"update","id":"…","index":2,"bg":"#F5F5F5"}` | move the page and/or set its background (`#RRGGBB`) |
 | | `{"op":"page","action":"select","id":"…"}` | changes the page the user sees. Only when asked: creating never needs it |
+| | `{"op":"page","action":"delete","id":"…"}` | `{deleted:{id,name}, roots, current}`. **Only** a page the user explicitly asked to delete, by id (CLI: `figma-ultimate page delete <id>`). If it is the open page, the user is moved to its neighbour first. Refused, `not-started`, for the file's only page (`last-page`) and a page other work is using (`page-busy`) |
 | `find` | `{"op":"find","name":"Button","limit":100}` | nodes on the **visible page** whose name contains the text |
 | `children` | `{"op":"children","id":"<page or node id>","prefix":"UI / "}` | direct children `[{id,name,type,x,y,w,h}]`. Without `id`: the visible page. Works for pages that are not visible |
 | `tree` | `{"op":"tree","id":"…","depth":3}` | nested summary |
@@ -34,7 +35,7 @@ array of up to 128 as one batch. Field names are case-sensitive; most enum value
 | `audit` | `{"op":"audit","id":"<frame>"}` | text colours against their real background, small tap targets, overflow |
 | `exportImage` | use `figma-ultimate export <id> out.png` instead | |
 | `select` | `{"op":"select","ids":["…"]}` | selects and zooms. Only when the user asks to be shown something |
-| `remove` | `{"op":"remove","ids":["…"]}` | **Only** for nodes the user explicitly asked to delete, by id |
+| `remove` | `{"op":"remove","ids":["…"]}` | `{removed:[ids]}`. **Only** for nodes (frames, sections, groups, layers) the user explicitly asked to delete, by id (CLI: `figma-ultimate remove <id…>`). Ids that no longer exist are skipped. A page id refuses the whole request: use `page` `delete` |
 | `cancel` | `figma-ultimate cancel [requestId]` | |
 
 Reactions: each entry is `{trigger, to | back, navigation, transition}`. `trigger` defaults to
