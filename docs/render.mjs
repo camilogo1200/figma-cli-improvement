@@ -62,7 +62,10 @@ if (scenes.length) {
     for (const s of scenes) {
       const url = s.window ? pathToFileURL(join(work, 'frame.html')).href + `#w=${s.window[0]}&h=${s.window[1]}&canvas=${s.canvas ? 1 : 0}&scene=${encodeURIComponent(s.scene)}`
         : pathToFileURL(join(work, 'ui.html')).href + '#' + s.scene;
-      shot(url, s.page, join(images, s.name + '.png'), 1.5);
+      // Same bytes on every run: reduced motion is the console's supported static state (no
+      // stripe, marching-border or beacon phase), and whole-tile raster keeps the half-pixel
+      // card rings from depending on which part of a tile the last sample repainted.
+      shot(url, s.page, join(images, s.name + '.png'), 1.5, ['--force-prefers-reduced-motion', '--disable-partial-raster']);
     }
   } finally { if (process.env.KEEP_DOCS_WORK) console.log('kept', work); else rmSync(work, { recursive: true, force: true }); }
 }
