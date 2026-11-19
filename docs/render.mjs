@@ -51,6 +51,7 @@ const scenes = [
   { name: 'console-activity', page: [1060, 904], scene: 'mode=console&tab=activity&scroll=section-title' },
   { name: 'console-close-dialog', page: [1060, 904], scene: 'mode=console&tab=overview&dialog=close' },
   { name: 'console-signal', page: [1060, 904], scene: 'mode=console&tab=overview&theme=signal&scroll=section-title' },
+  { name: 'console-dark', page: [1060, 904], scene: 'mode=console&tab=overview&appearance=dark' },
 ].filter(s => wanted(s.name));
 
 if (scenes.length) {

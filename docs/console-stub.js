@@ -22,6 +22,8 @@
   window.cancelAnimationFrame = id => clearTimeout(id);
 
   const scene = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+  // Figma marks its dark appearance with this class on <html> (showUI themeColors).
+  if (scene.appearance === 'dark') document.documentElement.classList.add('figma-dark');
   const mode = scene.mode || 'console', theme = scene.theme || 'ios', started = Date.now();
   const deliver = msg => setTimeout(() => window.dispatchEvent(new MessageEvent('message', { data: { pluginMessage: msg }, origin: 'https://www.figma.com' })), 0);
   const identity = { file: 'Checkout flows', page: 'Checkout', pageId: 'p1', fileKey: 'fileA', instanceId: 'docs-instance', protocol: 4, build: 'docs' };

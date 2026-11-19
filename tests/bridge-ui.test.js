@@ -241,6 +241,35 @@ test('themes synchronize across views without changing subscription, outcomes, o
   h.window.beforeunload();
 });
 
+test('IOS is neutral graphite in Figma dark; IOS Blue keeps the blue-gray dark and the IOS light look', () => {
+  for (const id of ['ui-theme', 'compact-theme']) {
+    const options = html.match(new RegExp('<select id="' + id + '"[^>]*>(.*?)</select>'))[1];
+    assert.deepEqual([...options.matchAll(/value="([^"]+)">([^<]+)</g)].map(m => m[1] + '=' + m[2]), ['ios=IOS', 'ios-blue=IOS Blue', 'signal=Signal']);
+  }
+  const tokens = selector => {
+    const start = html.indexOf('\n' + selector + ' {'); assert.notEqual(start, -1, selector);
+    return Object.fromEntries([...html.slice(start, html.indexOf('}', start)).matchAll(/(--[\w-]+):([^;]+);/g)].map(m => [m[1], m[2].trim()]));
+  };
+  // Light is shared, so IOS Blue only differs once Figma is dark.
+  assert.equal(tokens('body:is([data-theme="ios"],[data-theme="ios-blue"])')['--bg'], '#f1f3fa');
+  const blue = tokens('.figma-dark body[data-theme="ios-blue"],body.figma-dark[data-theme="ios-blue"]');
+  assert.deepEqual([blue['--bg'], blue['--card'], blue['--line']], ['#171d2a', '#252e40', '#47556e']);
+  const graphite = tokens(':is(.figma-dark body,body.figma-dark)[data-theme="ios"]');
+  for (const name of ['--bg', '--card', '--ink', '--muted', '--line', '--wash', '--action-bg']) {
+    const [r, g, b] = graphite[name].match(/^#(..)(..)(..)$/).slice(1);
+    assert.ok(r === g && g === b, name + ' is a neutral gray, not ' + graphite[name]);
+  }
+  // Color stays where it carries meaning: status, data, progress and the attention panel.
+  for (const name of ['--blue', '--green', '--red', '--orange', '--hero-accent']) assert.doesNotMatch(graphite[name], /^#(..)\1\1$/, name);
+  assert.match(graphite['--hero-ring'], /^#ffc074/);
+  const h = harness(); h.connect();
+  h.elements.get('ui-theme').change({ target: { value: 'ios-blue' } });
+  assert.equal(h.document.body.dataset.theme, 'ios-blue');
+  assert.equal(h.elements.get('compact-theme').value, 'ios-blue');
+  assert.equal(h.messages.at(-1).type, 'ui-theme'); assert.equal(h.messages.at(-1).theme, 'ios-blue');
+  h.window.beforeunload();
+});
+
 test('compact uses the lightweight coordinator summary and distinguishes local progress from global work', () => {
   const h=harness(), ws=h.connect();
   h.elements.get('mode').change({target:{value:'compact'}});

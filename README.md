@@ -891,11 +891,14 @@ button: open the plugin in that file to release them. Nothing is ever retried or
 
 | Theme | Treatment |
 |---|---|
-| **IOS** (default) | Blue-gray surfaces, 16 px corners, vivid chart colors, blue actions and a blue uncertainty hero |
+| **IOS** (default) | Light: blue-gray surfaces, 16 px corners, vivid chart colors, blue actions and a blue uncertainty hero. Dark: graphite. Near-black neutral surfaces, gray type and hairlines, a darker sidebar, a gray selection pill, white actions and 12 px corners. Color only where it carries meaning: status pills, data and charts, progress, focus, and an amber attention panel |
+| **IOS Blue** | IOS in light. In dark, the blue-gray surfaces and blue hero that IOS used before graphite |
 | **Signal** | White workspace, near-black type, 12 px corners, inverse selection. Opaque graphite emphasis cards with a narrow clear-coat reflection on the top edge. Vivid color is reserved for data |
 
-Both follow Figma's light/dark appearance, keyboard focus and reduced-motion preferences. Changing theme
+All three follow Figma's light/dark appearance, keyboard focus and reduced-motion preferences. Changing theme
 only swaps CSS tokens. It never reconnects, clears outcomes or releases reservations.
+
+![IOS in Figma's dark appearance: graphite, with the amber attention panel (sample data)](docs/images/console-dark.png)
 
 ![Signal theme (sample data)](docs/images/console-signal.png)
 
@@ -1269,7 +1272,7 @@ node docs/render.mjs architecture     # one diagram
 | `turn-taking.png` | Two agents in one file: waiting vs. taking turns |
 | `zone-lifecycle.png` | Zone states and how the canvas map draws them |
 | `failure-isolation.png` | File-wide holds before, scoped holds after |
-| `console-*.png` | Banner, compact, overview, highways, canvas map, timeline, activity, close dialog, Signal theme |
+| `console-*.png` | Banner, compact, overview, highways, canvas map, timeline, activity, close dialog, IOS dark, Signal theme |
 
 ## 18. Contributing
 
