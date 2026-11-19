@@ -47,7 +47,7 @@
   },
   "scripts": {
     "setup": "node bin/figma-ultimate.mjs setup",
-    "test": "node bin/figma-ultimate.mjs build && node --test tests/*.test.js",
+    "test": "node bin/figma-ultimate.mjs build && node tests/run.mjs",
     "test:live": "node tests/live/navigation-stress.mjs --plan --mode all",
     "docs": "node docs/render.mjs"
   },
