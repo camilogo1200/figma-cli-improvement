@@ -2,7 +2,28 @@
 // the console can be photographed with sample data. It replaces WebSocket and the
 // parent window inside the rendered copy only; it never opens a real connection.
 (() => {
+  // Same pixels on every run and every machine: the clock starts at a fixed instant
+  // (virtual time advances it), and times and numbers format in en-US, UTC.
+  const RealDate = Date, shift = RealDate.UTC(2026, 9, 16, 14, 30) - RealDate.now();
+  for (const m of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']) {
+    const real = RealDate.prototype[m];
+    RealDate.prototype[m] = function (locales, options) { return real.call(this, locales || 'en-US', { timeZone: 'UTC', ...options }); };
+  }
+  const realNumber = Number.prototype.toLocaleString;
+  Number.prototype.toLocaleString = function (locales, options) { return realNumber.call(this, locales || 'en-US', options); };
+  window.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [RealDate.now() + shift])); }
+    static now() { return RealDate.now() + shift; }
+  };
+  // Headless Chrome runs animation frames at unpredictable points of the virtual time
+  // budget, so a requestAnimationFrame paint could land after the scroll below. A 16 ms
+  // timer runs in virtual time, like every other step of the scene.
+  window.requestAnimationFrame = callback => setTimeout(() => callback(Date.now()), 16);
+  window.cancelAnimationFrame = id => clearTimeout(id);
+
   const scene = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+  // Figma marks its dark appearance with this class on <html> (showUI themeColors).
+  if (scene.appearance === 'dark') document.documentElement.classList.add('figma-dark');
   const mode = scene.mode || 'console', theme = scene.theme || 'ios', started = Date.now();
   const deliver = msg => setTimeout(() => window.dispatchEvent(new MessageEvent('message', { data: { pluginMessage: msg }, origin: 'https://www.figma.com' })), 0);
   const identity = { file: 'Checkout flows', page: 'Checkout', pageId: 'p1', fileKey: 'fileA', instanceId: 'docs-instance', protocol: 4, build: 'docs' };
@@ -81,11 +102,15 @@
   }
 
   let sequence = 0, applied = false;
-  // Scroll the console's main column so the section heading sits at the top. Repeated on
-  // every sample because the panel paints asynchronously after showPanel().
+  // Scroll the console's main column so the section heading sits at the top, above the
+  // attention panel the sample's held zone raises (the overview shows that panel). Repeated
+  // on every sample because the panel paints asynchronously after showPanel(). Room below
+  // the content lets a short panel (Timeline) scroll its heading up as well.
   function scrollScene() {
     const target = scene.scroll && document.getElementById(scene.scroll), main = document.querySelector('main');
-    if (target && main) main.scrollTop += target.getBoundingClientRect().top - main.getBoundingClientRect().top - 8;
+    if (!target || !main) return;
+    main.style.paddingBottom = main.clientHeight + 'px';
+    main.scrollTop += target.getBoundingClientRect().top - main.getBoundingClientRect().top - 8;
   }
   function apply() {
     if (!applied) {
