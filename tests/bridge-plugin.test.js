@@ -830,7 +830,7 @@ test('storage failure still opens the banner', async () => {
 });
 
 test('theme restores independently of size and rejects unsupported stored values', async () => {
-  for (const [saved, expected] of [['ios', 'ios'], ['signal', 'signal'], ['ios-color', 'ios'], ['ios-uber', 'ios'], ['graphite', 'signal'], ['constructor', 'ios']]) {
+  for (const [saved, expected] of [['ios', 'ios'], ['ios-blue', 'ios-blue'], ['signal', 'signal'], ['ios-color', 'ios'], ['ios-uber', 'ios'], ['graphite', 'signal'], ['constructor', 'ios']]) {
     const h = harness({ clientStorage: { async getAsync(key) { if (key === 'ui-mode') throw Error('size unavailable'); return saved; } } });
     await flush();
     await h.figma.ui.onmessage({ type: 'identify' });
@@ -852,12 +852,13 @@ test('rapid theme saves serialize with size, recover from storage failure, and n
   await h.figma.ui.onmessage({ type: 'ui-mode', mode: 'compact' });
   await h.figma.ui.onmessage({ type: 'ui-theme', theme: 'signal' });
   await h.figma.ui.onmessage({ type: 'ui-theme', theme: '<invalid>' });
+  await h.figma.ui.onmessage({ type: 'ui-theme', theme: 'ios-blue' });
   await flush(); assert.deepEqual(writes, [['ui-theme', 'ios']]);
   release(); await flush();
   // Sessions always start as the banner, so the window size is no longer saved.
-  assert.deepEqual(writes, [['ui-theme', 'ios'], ['ui-theme', 'signal']]);
+  assert.deepEqual(writes, [['ui-theme', 'ios'], ['ui-theme', 'signal'], ['ui-theme', 'ios-blue']]);
   await h.figma.ui.onmessage({ type: 'identify' });
-  assert.equal(h.messages.find(m => m.type === 'identity').uiTheme, 'signal');
+  assert.equal(h.messages.find(m => m.type === 'identity').uiTheme, 'ios-blue');
   assert.deepEqual(h.figma.ui.size, [360, 300]); assert.equal(h.made, 0);
 });
 

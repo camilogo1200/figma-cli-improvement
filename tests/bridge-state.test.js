@@ -24,6 +24,10 @@ function fixture(t) {
   return { home, env, shared: join(home, '.figma-ds-cli'), previous: join(home, '.insula-figma-cli'), state: join(home, '.figma-cli-ultimate') };
 }
 const run = (env, code) => exec(process.execPath, ['--input-type=module', '-e', code], { env, windowsHide: true, timeout: 5000 });
+// A child killed by a signal ends with exitCode null and signalCode set on
+// POSIX (on Windows it gets exitCode 1). Checking exitCode alone mistakes it
+// for a live process and waits forever for an 'exit' that already fired.
+const running = child => child.exitCode === null && child.signalCode === null;
 const probe = `import {STATE_DIR,PID_FILE,TOKEN_FILE,ensureToken} from ${JSON.stringify(stateURL)};
   ensureToken(); console.log(JSON.stringify({STATE_DIR,PID_FILE,TOKEN_FILE}));`;
 
@@ -91,13 +95,13 @@ test('the bridge survives the original figma-cli stopping its PID and rotating i
     env: { ...env, FIGMA_ULTIMATE_PORT: '0' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(async () => {
-    for (const process of [child, foreign]) if (process.exitCode === null) { const exited = once(process, 'exit'); process.kill(); await exited; }
+    for (const proc of [child, foreign]) if (running(proc)) { const exited = once(proc, 'exit'); proc.kill(); await exited; }
   });
   let log = '', errors = '';
   child.stdout.on('data', b => { log += b; }); child.stderr.on('data', b => { errors += b; });
   const end = Date.now() + 5000;
-  while (!log.includes('daemon-start') && child.exitCode === null && Date.now() < end) await new Promise(r => setTimeout(r, 20));
-  assert.equal(child.exitCode, null, errors);
+  while (!log.includes('daemon-start') && running(child) && Date.now() < end) await new Promise(r => setTimeout(r, 20));
+  assert.ok(running(child), errors);
   const start = log.split('\n').map(s => { try { return JSON.parse(s); } catch { return {}; } }).find(s => s.event === 'daemon-start');
   assert.ok(start, errors || log);
   const token = readFileSync(join(state, '.daemon-token'), 'utf8');

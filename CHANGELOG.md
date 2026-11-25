@@ -20,6 +20,11 @@
 ### Changed
 - `remove` looks up every id before deleting anything. A page or the document among them refuses the
   whole request, `not-started`; it used to pass a page straight to Figma.
+- In Figma's dark appearance the default IOS theme is graphite: near-black neutral surfaces, gray
+  type and hairlines, a darker sidebar and a gray selection pill. Color stays only where it carries
+  meaning: status pills, data and charts, progress, focus, and an amber attention panel. Figma's
+  light appearance is unchanged. The previous blue-gray dark is the new **IOS Blue** theme, which
+  matches IOS in light; a saved IOS choice opens in graphite.
 
 ## 3.1.0 — 2026-11-17
 

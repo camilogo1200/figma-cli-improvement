@@ -35,7 +35,8 @@ test('real daemon HTTP/WebSocket lifecycle on an isolated ephemeral port', { tim
     env: { ...process.env, FIGMA_ULTIMATE_PORT: '0', FIGMA_ULTIMATE_STATE_DIR: state } });
   let logs = '', errors = ''; child.stdout.on('data', b => { logs += b; }); child.stderr.on('data', b => { errors += b; });
   let ws;
-  t.after(async () => { ws?.terminate(); if (child.exitCode === null) { child.kill(); await once(child, 'exit'); } });
+  // signalCode too: a child killed by a signal on POSIX keeps exitCode null after it exits.
+  t.after(async () => { ws?.terminate(); if (child.exitCode === null && child.signalCode === null) { child.kill(); await once(child, 'exit'); } });
   await until(() => logs.includes('daemon-start') || child.exitCode !== null);
   assert.equal(child.exitCode, null, errors);
   const start = logs.split('\n').map(s => { try { return JSON.parse(s); } catch { return {}; } }).find(e => e.event === 'daemon-start');

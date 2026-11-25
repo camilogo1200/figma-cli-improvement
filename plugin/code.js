@@ -15,7 +15,7 @@
 var UI_MODES = { stealth: [400, 40], compact: [360, 300], standard: [360, 600], console: [1060, 904] };
 var UI_MIN = [300, 200], UI_MAX = [2400, 1800];
 var uiMode = 'stealth', uiSize = UI_MODES.stealth;
-var UI_THEMES = ['ios', 'signal'];
+var UI_THEMES = ['ios', 'ios-blue', 'signal'];
 var uiTheme = 'ios';
 var uiStorageWrite = Promise.resolve();
 var rememberedCredential = '';
@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.1.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = '751d53dfc58948b7c31e4738'; // stamped by bridge/launcher.mjs build
+var BUILD = '2110ea11e1d2558617d6ae11'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
