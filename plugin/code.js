@@ -64,7 +64,7 @@ function resizeWindow(width, height, dx, dy) {
 var VERSION = '3.1.0-ultimate';
 // 3: bounded cancellable FIFO, ownership cleanup and build/session fencing.
 var PROTOCOL = 4;
-var BUILD = '717f2f3c5c1911dd79c3d8a8'; // stamped by bridge/launcher.mjs build
+var BUILD = '751d53dfc58948b7c31e4738'; // stamped by bridge/launcher.mjs build
 var INSTANCE_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 // One metadata-only receipt, never a retained SceneNode or creation payload.
 var historyCandidate = null;
@@ -674,7 +674,329 @@ async function resolveParent(ref) {
 
 // ping, info and cancel answer at once, outside the queue (see IMMEDIATE), so
 // they report what the queue is doing instead of waiting behind it.
+// Cursor state lives in the plugin instance, so a fresh file-bound client can
+// continue a scan. Discarding a cursor also removes its page change listener.
+var INSPECTION_BYTES = 192 * 1024, SCAN_NODES = 500, PAGE_LIMIT = 1000;
+var cursors = new Map(), cursorSequence = 0;
+function operationError(cmd, kind, message, extra, outcome) {
+  var error = failure(kind, message, outcome || 'not-started');
+  var details = { op: cmd.op };
+  ['collectionId', 'collectionName', 'variableId', 'name', 'modeId', 'nodeId', 'property', 'paintIndex', 'rootId'].forEach(function (key) {
+    if (cmd[key] !== undefined) details[key] = cmd[key];
+  });
+  error.details = merge(details, extra || {});
+  return error;
+}
+function closeScan(scan) { if (scan && scan.close) scan.close(); }
+function takeCursor(cmd, scope) {
+  var now = Date.now();
+  cursors.forEach(function (entry, key) {
+    if (entry.expires <= now) { cursors.delete(key); closeScan(entry.scan); }
+  });
+  if (cmd.cursor === undefined) return null;
+  var entry = cursors.get(cmd.cursor);
+  if (!entry || entry.scope !== scope) throw operationError(cmd, 'stale-cursor', 'Restart this inspection without a cursor');
+  cursors.delete(cmd.cursor);
+  return entry.scan;
+}
+function continueScan(scope, scan) {
+  if (cursors.size >= 16) {
+    var oldest = cursors.keys().next().value;
+    closeScan(cursors.get(oldest).scan); cursors.delete(oldest);
+  }
+  var token = INSTANCE_ID + '.' + (++cursorSequence).toString(36);
+  cursors.set(token, { scope: scope, scan: scan, expires: Date.now() + 300000 });
+  return token;
+}
+function pageLimit(cmd, fallback) {
+  if (cmd.limit === undefined) return fallback;
+  if (!Number.isInteger(cmd.limit) || cmd.limit < 1 || cmd.limit > PAGE_LIMIT) {
+    throw operationError(cmd, 'invalid-request', 'limit must be an integer from 1 to ' + PAGE_LIMIT);
+  }
+  return cmd.limit;
+}
+function addRecord(cmd, budget, records, value) {
+  var size = byteLength(JSON.stringify(value)) + 1;
+  if (size > INSPECTION_BYTES) throw operationError(cmd, 'result-too-large', 'One inspection record exceeds the page byte budget');
+  if (size > budget.remaining) return false;
+  budget.remaining -= size; records.push(value); return true;
+}
+function stringField(cmd, field, required) {
+  var value = cmd[field];
+  if ((required || value !== undefined) && (typeof value !== 'string' || !value.trim())) {
+    throw operationError(cmd, 'invalid-request', field + ' must be a nonempty string');
+  }
+}
+function localByName(cmd, items, name) {
+  var matches = items.filter(function (item) { return !item.remote && item.name === name; });
+  if (matches.length > 1) throw operationError(cmd, 'ambiguous-name', 'Multiple local resources are named ' + name);
+  return matches[0];
+}
+function collectionInfo(c) {
+  return { id: c.id, name: c.name, modes: c.modes, defaultModeId: c.defaultModeId };
+}
+async function listVariables(cmd) {
+  var limit = pageLimit(cmd, 100);
+  stringField(cmd, 'collectionId');
+  if (cmd.type !== undefined && ['COLOR', 'FLOAT', 'STRING', 'BOOLEAN'].indexOf(cmd.type) < 0) throw operationError(cmd, 'invalid-request', 'Unknown variable type');
+  var scope = JSON.stringify([cmd.op, cmd.collectionId, cmd.type, limit]);
+  var scan = takeCursor(cmd, scope) || { collectionsDone: false, afterCollection: '', afterVariable: '' };
+  var api = figma.variables;
+  var collections = await checked(api.getLocalVariableCollectionsAsync());
+  if (cmd.collectionId) {
+    collections = collections.filter(function (c) { return c.id === cmd.collectionId; });
+    if (!collections.length) throw operationError(cmd, 'collection-not-found', 'Unknown local collection');
+  }
+  var byId = new Map(collections.map(function (c) { return [c.id, c]; }));
+  var result = { collections: [], variables: [], nextCursor: null }, included = new Set();
+  var budget = { remaining: INSPECTION_BYTES };
+  function include(c) {
+    if (included.has(c.id)) return true;
+    if (!addRecord(cmd, budget, result.collections, collectionInfo(c))) return false;
+    included.add(c.id); return true;
+  }
+  function more() { result.nextCursor = continueScan(scope, scan); return result; }
+  function idOrder(a, b) { return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; }
+  if (!scan.collectionsDone) {
+    for (var c of collections.slice().sort(idOrder)) {
+      if (c.id <= scan.afterCollection) continue;
+      if (included.size >= PAGE_LIMIT || !include(c)) return more();
+      scan.afterCollection = c.id;
+    }
+    scan.collectionsDone = true;
+  }
+  var variables = await checked(api.getLocalVariablesAsync(cmd.type));
+  for (var v of variables.slice().sort(idOrder)) {
+    if (v.id <= scan.afterVariable || !byId.has(v.variableCollectionId)) continue;
+    if (result.variables.length >= limit) return more();
+    var row = { id: v.id, collectionId: v.variableCollectionId, name: v.name, resolvedType: v.resolvedType, valuesByMode: v.valuesByMode };
+    var empty = !result.collections.length && !result.variables.length;
+    if (!include(byId.get(v.variableCollectionId)) || !addRecord(cmd, budget, result.variables, row)) {
+      if (empty) throw operationError(cmd, 'result-too-large', 'Variable and collection metadata exceed the page byte budget', { variableId: v.id });
+      return more();
+    }
+    scan.afterVariable = v.id;
+  }
+  return result;
+}
+var CHANNELS_RGBA = ['r', 'g', 'b', 'a'];
+function validRgba(value) {
+  return value && typeof value === 'object' && CHANNELS_RGBA.every(function (k) {
+    return Number.isFinite(value[k]) && value[k] >= 0 && value[k] <= 1;
+  });
+}
+function requestedColor(cmd) {
+  if (typeof cmd.value === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(cmd.value)) return hexToRgb(cmd.value);
+  if (validRgba(cmd.value)) return parseColor(cmd.value);
+  throw operationError(cmd, 'invalid-color', 'Expected #RRGGBB, #RRGGBBAA or normalized r, g, b, a channels');
+}
+function sameColor(saved, requested) {
+  // The host stores channels at single precision.
+  return validRgba(saved) && CHANNELS_RGBA.every(function (k) { return Math.fround(saved[k]) === Math.fround(requested[k]); });
+}
+async function localColorById(cmd) {
+  stringField(cmd, 'variableId', true);
+  var v = await checked(figma.variables.getVariableByIdAsync(cmd.variableId));
+  if (!v || v.remote) throw operationError(cmd, 'variable-not-found', 'Unknown local variable');
+  if (v.resolvedType !== 'COLOR') throw operationError(cmd, 'variable-type-mismatch', 'Expected a COLOR variable', { actualType: v.resolvedType });
+  return v;
+}
+async function upsertColor(cmd) {
+  var api = figma.variables, value = requestedColor(cmd);
+  stringField(cmd, 'collectionId'); stringField(cmd, 'collectionName', cmd.collectionId === undefined && cmd.variableId === undefined);
+  stringField(cmd, 'variableId'); stringField(cmd, 'name', cmd.variableId === undefined); stringField(cmd, 'modeId');
+  var v = cmd.variableId && await localColorById(cmd);
+  var collectionId = cmd.collectionId || (v && v.variableCollectionId), c;
+  if (collectionId) {
+    c = await checked(api.getVariableCollectionByIdAsync(collectionId));
+    if (!c || c.remote) throw operationError(cmd, 'collection-not-found', 'Unknown local collection');
+    if (cmd.collectionName && c.name !== cmd.collectionName) throw operationError(cmd, 'identity-conflict', 'Collection ID and name disagree');
+  } else {
+    c = localByName(cmd, await checked(api.getLocalVariableCollectionsAsync()), cmd.collectionName);
+  }
+  if (cmd.modeId && (!c || !c.modes.some(function (m) { return m.modeId === cmd.modeId; }))) throw operationError(cmd, 'mode-not-in-collection', 'Mode does not belong to the collection');
+  if (c && !v) {
+    var locals = await checked(api.getLocalVariablesAsync());
+    v = localByName(cmd, locals.filter(function (item) { return item.variableCollectionId === c.id; }), cmd.name);
+  }
+  if (v && v.variableCollectionId !== c.id) throw operationError(cmd, 'wrong-collection', 'Variable belongs to another collection');
+  if (v && cmd.name && v.name !== cmd.name) throw operationError(cmd, 'identity-conflict', 'Variable ID and name disagree');
+  if (v && v.resolvedType !== 'COLOR') throw operationError(cmd, 'variable-type-mismatch', 'Expected a COLOR variable', { actualType: v.resolvedType });
+  var receipt = { createdCollection: false, createdVariable: false, changed: false };
+  try {
+    if (!c) { c = api.createVariableCollection(cmd.collectionName); receipt.createdCollection = true; }
+    receipt.collectionId = c.id;
+    receipt.modeId = cmd.modeId || c.defaultModeId;
+    if (!v) { v = api.createVariable(cmd.name, c, 'COLOR'); receipt.createdVariable = true; }
+    receipt.variableId = v.id;
+    if (!sameColor(v.valuesByMode[receipt.modeId], value)) {
+      v.setValueForMode(receipt.modeId, value); receipt.changed = true;
+    }
+    receipt.changed = receipt.changed || receipt.createdVariable || receipt.createdCollection;
+    receipt.valuesByMode = v.valuesByMode;
+    receipt.value = receipt.valuesByMode[receipt.modeId];
+    return receipt;
+  } catch (err) {
+    receipt.changed = receipt.changed || receipt.createdCollection || receipt.createdVariable;
+    if (v) receipt.value = v.valuesByMode[receipt.modeId];
+    throw operationError(cmd, 'variable-write-failed', err.message || String(err), receipt, receipt.changed ? 'partial' : 'failed');
+  }
+}
+async function paintTarget(cmd) {
+  stringField(cmd, 'nodeId', true);
+  if (cmd.property !== 'fills' && cmd.property !== 'strokes') throw operationError(cmd, 'invalid-request', 'property must be fills or strokes');
+  var node = await checked(figma.getNodeByIdAsync(cmd.nodeId));
+  if (!node) throw operationError(cmd, 'node-not-found', 'Unknown paint consumer');
+  var paints = node[cmd.property];
+  if (paints === figma.mixed && paints !== undefined) throw operationError(cmd, 'mixed-paints', 'The text ranges have different paints');
+  if (!Array.isArray(paints)) throw operationError(cmd, 'unsupported-paint-property', 'Node has no ' + cmd.property + ' paint list');
+  if (!Number.isInteger(cmd.paintIndex) || cmd.paintIndex < 0 || cmd.paintIndex >= paints.length) throw operationError(cmd, 'paint-index-out-of-range', 'Invalid paint index', { paintCount: paints.length });
+  var paint = paints[cmd.paintIndex], binding = paint.boundVariables && paint.boundVariables.color;
+  return { node: node, paints: paints, paint: paint, boundId: binding ? binding.id : null };
+}
+async function bindPaint(cmd) {
+  'use strict';
+  var v = await localColorById(cmd), target = await paintTarget(cmd), node = target.node;
+  if (target.paint.type !== 'SOLID') throw operationError(cmd, 'unsupported-paint-type', 'Only solid paints can bind color', { expectedType: 'SOLID', actualType: target.paint.type });
+  var changed = target.boundId !== v.id;
+  if (changed) {
+    if (node[cmd.property === 'fills' ? 'fillStyleId' : 'strokeStyleId']) throw operationError(cmd, 'style-controlled-paint', 'Assigning this paint would detach its style');
+    for (var object = node; object; object = Object.getPrototypeOf(object)) {
+      var descriptor = Object.getOwnPropertyDescriptor(object, cmd.property);
+      if (!descriptor) continue;
+      if (descriptor.writable === false || ('get' in descriptor && !descriptor.set)) throw operationError(cmd, 'read-only-paint', 'Paint property is read-only');
+      break;
+    }
+    var updated = target.paints.slice();
+    updated[cmd.paintIndex] = figma.variables.setBoundVariableForPaint(target.paint, 'color', v);
+    noteTarget(node, 'write');
+    try { node[cmd.property] = updated; }
+    catch (err) { throw operationError(cmd, 'paint-write-failed', err.message || String(err), {}, 'failed'); }
+  }
+  return { nodeId: node.id, property: cmd.property, paintIndex: cmd.paintIndex, previousVariableId: target.boundId, variableId: v.id, changed: changed };
+}
+async function inspectPaint(cmd) {
+  var target = await paintTarget(cmd), node = target.node, paint = target.paint;
+  noteTarget(node, 'read');
+  var main = node.type === 'INSTANCE' && await checked(node.getMainComponentAsync());
+  var result = { nodeId: node.id, nodeType: node.type, mainComponentId: main ? main.id : null,
+    property: cmd.property, paintIndex: cmd.paintIndex, paintType: paint.type, boundVariableId: target.boundId,
+    collectionId: null, effectiveModeId: null, resolvedRgba: null, resolvedHex: null, paintOpacity: paint.opacity == null ? 1 : paint.opacity };
+  if (paint.type !== 'SOLID') return result;
+  var rgba = paint.color;
+  if (target.boundId) {
+    var v = await checked(figma.variables.getVariableByIdAsync(target.boundId));
+    var c = v && await checked(figma.variables.getVariableCollectionByIdAsync(v.variableCollectionId));
+    if (!c || v.resolvedType !== 'COLOR') throw operationError(cmd, 'unresolved-variable', 'Cannot resolve bound color or collection', { variableId: target.boundId });
+    result.collectionId = c.id;
+    result.effectiveModeId = (node.resolvedVariableModes || {})[c.id] || c.defaultModeId;
+    try {
+      var resolved = v.resolveForConsumer(node);
+      if (resolved.resolvedType !== 'COLOR' || !resolved.value || !validRgba(merge({ a: 1 }, resolved.value))) throw Error('Variable did not resolve to a color');
+      rgba = resolved.value;
+    } catch (err) { throw operationError(cmd, 'unresolved-variable', err.message || String(err), { variableId: v.id, collectionId: c.id }); }
+  }
+  result.resolvedRgba = parseColor(rgba);
+  result.resolvedHex = '#' + CHANNELS_RGBA.map(function (k) { return ('0' + Math.round(result.resolvedRgba[k] * 255).toString(16)).slice(-2); }).join('').toUpperCase();
+  return result;
+}
+
+var prototypeRevision = 0;
+function scanEntry(node, owner, visible, present) {
+  return { node: node, owner: present ? node.id : owner, visible: visible && node.visible !== false,
+    framePending: present, reaction: 0, child: 0 };
+}
+function startPrototypeScan(root, page) {
+  var visible = true, owner = null;
+  for (var ancestor = root.parent; ancestor && ancestor.type !== 'PAGE'; ancestor = ancestor.parent) {
+    visible = visible && ancestor.visible !== false;
+    if (ancestor.type === 'FRAME' && ancestor.parent.type === 'PAGE') owner = ancestor.id;
+  }
+  var scan = { page: page, flow: 0, revision: prototypeRevision, stale: false,
+    stack: [scanEntry(root, owner, visible, root.type === 'FRAME' && !owner)] };
+  if (typeof page.on === 'function') {
+    var invalidate = function () { scan.stale = true; };
+    page.on('nodechange', invalidate);
+    scan.close = function () { if (!page.removed) page.off('nodechange', invalidate); };
+  }
+  return scan;
+}
+function nativeReaction(entry, reaction) {
+  var row = { sourceNodeId: entry.node.id, sourceName: entry.node.name, sourceFrameId: entry.owner,
+    effectiveVisible: entry.visible, reactionIndex: entry.reaction, trigger: reaction.trigger };
+  for (var k of Object.keys(reaction)) if (k !== 'action' && k !== 'actions') row[k] = reaction[k];
+  row.actions = Array.isArray(reaction.actions) ? reaction.actions : reaction.action ? [reaction.action] : [];
+  return row;
+}
+// The DFS stack retains only the path and offsets between calls. Read child
+// arrays once per parent per slice, including hidden instance descendants.
+function prototypeSlice(cmd, scan, limit, result) {
+  var budget = { remaining: INSPECTION_BYTES }, steps = 0;
+  var starts = cmd.includeFlowStarts ? scan.page.flowStartingPoints : [];
+  while (scan.flow < starts.length) {
+    if (++steps > SCAN_NODES || !addRecord(cmd, budget, result.flowStartingPoints, starts[scan.flow])) return false;
+    scan.flow++;
+  }
+  var children = new Map();
+  while (scan.stack.length && steps++ < SCAN_NODES) {
+    var entry = scan.stack[scan.stack.length - 1], node = entry.node;
+    if (entry.framePending) {
+      if (entry.visible && !addRecord(cmd, budget, result.frames, { id: node.id, name: node.name })) return false;
+      entry.framePending = false;
+    }
+    if (!entry.reactionsDone) {
+      var reactions = node.reactions || [];
+      while (entry.reaction < reactions.length) {
+        if (result.reactions.length === limit || !addRecord(cmd, budget, result.reactions, nativeReaction(entry, reactions[entry.reaction]))) return false;
+        entry.reaction++;
+      }
+      entry.reactionsDone = true;
+    }
+    if (!children.has(entry)) children.set(entry, node.children || []);
+    var list = children.get(entry);
+    if (entry.child < list.length) {
+      var child = list[entry.child++];
+      scan.stack.push(scanEntry(child, entry.owner, entry.visible, node.type === 'PAGE' && child.type === 'FRAME'));
+    } else {
+      scan.stack.pop(); children.delete(entry);
+    }
+  }
+  return !scan.stack.length;
+}
+async function inspectPrototype(cmd) {
+  stringField(cmd, 'rootId', true);
+  if (cmd.includeFlowStarts !== undefined && typeof cmd.includeFlowStarts !== 'boolean') throw operationError(cmd, 'invalid-request', 'includeFlowStarts must be boolean');
+  var limit = pageLimit(cmd, 250), scope = JSON.stringify([cmd.op, cmd.rootId, !!cmd.includeFlowStarts, limit]);
+  var scan = takeCursor(cmd, scope);
+  if (!scan) {
+    var root = await checked(figma.getNodeByIdAsync(cmd.rootId));
+    if (!root) throw operationError(cmd, 'node-not-found', 'Unknown inspection root');
+    if (root.type !== 'PAGE' && root.type !== 'FRAME') throw operationError(cmd, 'invalid-root', 'Expected a page or frame');
+    var page = containingPage(root);
+    if (typeof page.loadAsync === 'function') await checked(page.loadAsync());
+    scan = startPrototypeScan(root, page);
+  }
+  var skip = figma.skipInvisibleInstanceChildren;
+  try {
+    if (scan.stale || scan.page.removed || scan.revision !== prototypeRevision) throw operationError(cmd, 'stale-cursor', 'Document changed during inspection; restart without a cursor');
+    var result = { pageId: scan.page.id, rootId: cmd.rootId, frames: [], flowStartingPoints: [], reactions: [], nextCursor: null };
+    figma.skipInvisibleInstanceChildren = false;
+    if (!prototypeSlice(cmd, scan, limit, result)) {
+      result.nextCursor = continueScan(scope, scan); scan = null;
+    }
+    return result;
+  } finally {
+    figma.skipInvisibleInstanceChildren = skip;
+    closeScan(scan);
+  }
+}
+
 var OPS = {
+  'prototype.inspect': inspectPrototype,
+  'variables.list': listVariables,
+  'variables.upsertColor': upsertColor,
+  'variables.bindPaint': bindPaint,
+  'variables.inspectPaint': inspectPaint,
   layoutInfo: async function (cmd) {
     requireFileKey(cmd.expectedFileKey);
     var page = await checked(figma.getNodeByIdAsync(cmd.pageId));
@@ -1111,7 +1433,7 @@ var OPS = {
   // and `to` a destination node id. Replaces the node's existing reactions.
   reactions: async function (cmd) {
     var node = await checked(figma.getNodeByIdAsync(cmd.id));
-    if (!node) throw new Error('Node not found: ' + cmd.id);
+    if (!node) throw operationError(cmd, 'node-not-found', 'Unknown reaction source', { sourceNodeId: cmd.id });
     noteTarget(node, 'write');
     var rs = (cmd.reactions || []).map(function (r) {
       var trigger = r.trigger || { type: 'ON_CLICK' };
@@ -1138,8 +1460,21 @@ var OPS = {
     } catch (e1) {
       // Older API shape: a single `action` per reaction.
       var legacy = rs.map(function (r) { return { trigger: r.trigger, action: r.actions[0] }; });
-      if (typeof node.setReactionsAsync === 'function') await node.setReactionsAsync(legacy);
-      else node.reactions = legacy;
+      try {
+        if (typeof node.setReactionsAsync === 'function') await node.setReactionsAsync(legacy);
+        else node.reactions = legacy;
+      } catch (e2) {
+        var cause = e1.message || String(e1), fallback = e2.message || String(e2);
+        var details = { sourceNodeId: cmd.id, cause: cause, legacyCause: fallback };
+        // Native validators often include paths like reactions[2].actions[0].
+        var path = /reactions(?:\[|\.)(\d+)/i.exec(cause);
+        var index = path ? Number(path[1]) : rs.length === 1 ? 0 : -1;
+        if (rs[index]) {
+          details.reactionIndex = index; details.trigger = rs[index].trigger;
+          details.actionIndex = 0; details.destinationId = rs[index].actions[0].destinationId || null;
+        }
+        throw operationError(cmd, 'reaction-write-failed', cause, details, 'failed');
+      }
     }
     return { id: node.id, reactions: rs.length };
   },
@@ -1399,6 +1734,7 @@ function identity() {
   return { version: VERSION, protocol: PROTOCOL, build: BUILD, file: figma.root.name,
     fileKey: typeof figma.fileKey === 'string' ? figma.fileKey : null, instanceId: INSTANCE_ID,
     capabilities: { fileKey: typeof figma.fileKey === 'string' && !!figma.fileKey, smartBuilderBoard: true,
+      localColorVariables: figma.editorType === 'figma' && figma.variables ? 1 : 0, prototypeInspection: figma.editorType === 'figma' ? 1 : 0,
       undo: typeof figma.triggerUndo === 'function' ? 'owned-remove-restore' : false, redo: false, documentReload: false },
     page: figma.currentPage.name, pageId: figma.currentPage.id };
 }
@@ -1406,7 +1742,8 @@ var LIMITS = { messageBytes: 8 * 1024 * 1024, resultBytes: 32 * 1024 * 1024,
   queueBytes: 16 * 1024 * 1024, queueJobs: 8, batchItems: 128, specNodes: 10000,
   specDepth: 64, exportPixels: 32 * 1024 * 1024 };
 var IMMEDIATE = { ping: true, info: true, cancel: true, verifyFile: true, inspectReservation: true };
-var MUTATING = { create: true, update: true, remove: true, reactions: true, flowStart: true, page: true, image: true, select: true };
+var MUTATING = { create: true, update: true, remove: true, reactions: true, flowStart: true, page: true, image: true, select: true,
+  'variables.upsertColor': true, 'variables.bindPaint': true };
 function mutatesArtwork(cmd) { return !!MUTATING[cmd.op] && !(cmd.op === 'page' && cmd.action === 'select'); }
 var YIELD_EVERY = 100;
 var waiting = [], queuedBytes = 0, current = null;
@@ -1670,7 +2007,10 @@ async function runCommand(cmd) {
       if (failed.length) e.details = { cleanupFailedIds: failed };
     } else if (!e.outcome) e.outcome = mutatesArtwork(cmd) ? 'partial' : 'failed';
     throw e;
-  } finally { fontCache = Object.create(null); }
+  } finally {
+    if (mutatesArtwork(cmd) && !(cmd.op === 'page' && (!cmd.action || cmd.action === 'list'))) prototypeRevision++;
+    fontCache = Object.create(null);
+  }
 }
 function uiRoundTrip() {
   var job = current;
@@ -1704,7 +2044,7 @@ async function runItems(cmds) {
       checkCancelled();
       results.push({ success: true, result: await runCommand(cmds[i]) });
     } catch (e) {
-      results.push({ success: false, error: e.message || String(e), kind: e.kind || 'plugin', outcome: e.outcome || 'failed', details: e.details });
+      results.push({ index: i, success: false, error: e.message || String(e), kind: e.kind || 'plugin', outcome: e.outcome || 'failed', details: e.details });
       // Stop on first failure; never silently continue a dependent batch.
       for (var j = i + 1; j < cmds.length; j++) results.push({ success: false, error: 'Skipped after earlier failure', kind: 'skipped', outcome: 'not-started' });
       break;

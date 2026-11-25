@@ -393,8 +393,10 @@ export async function main(args = process.argv.slice(2)) {
     // The outcome says what a caller may do next: only not-started and rolled-back may be retried.
     console.error(paint(31, '✗ ') + [e.message + (e.kind ? ` [${e.kind}]` : ''), e.outcome && `outcome: ${e.outcome}`, e.requestId && `request: ${e.requestId}`].filter(Boolean).join(' · '));
     if (e.kind === 'daemon-down') console.error('  The bridge is not running. Run figma-ultimate setup (first time) or figma-ultimate start.');
+    if (e.details) console.error(JSON.stringify(e.details, null, 2));
     if (e.results) console.error(JSON.stringify(e.results.map((r, index) => ({ index, success: r.success,
-      created: r.result?.created?.map(n => ({ id: n.id, name: n.name })), error: r.error, kind: r.kind, outcome: r.outcome, details: r.details })), null, 2));
+      created: r.result?.created?.map(n => ({ id: n.id, name: n.name })), variable: r.result?.variableId ? r.result : undefined,
+      error: r.error, kind: r.kind, outcome: r.outcome, details: r.details })), null, 2));
     process.exitCode = 1;
   }
 }

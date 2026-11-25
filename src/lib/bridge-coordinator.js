@@ -10,9 +10,14 @@ import { sizedRoots, layoutFootprint, findSpace, positionedCommand } from './bri
 const fail = (kind, message, details) => { throw bridgeError(kind, message, { outcome: 'not-started', details }); };
 const short = v => typeof v === 'string' ? v.slice(0, 128) : null;
 const key = (v, name) => { if (typeof v !== 'string' || !/^[\w:.-]{1,128}$/.test(v)) fail('invalid-request', name + ' must be a short identifier'); return v; };
-const READS = new Set(['ping', 'info', 'verifyFile', 'inspectReservation', 'find', 'children', 'tree', 'exportImage', 'audit', 'fonts', 'layoutInfo']);
+const READS = new Set(['ping', 'info', 'verifyFile', 'inspectReservation', 'find', 'children', 'tree', 'exportImage', 'audit', 'fonts', 'layoutInfo', 'variables.list', 'variables.inspectPaint', 'prototype.inspect']);
 const isRead = c => READS.has(c.op) || (c.op === 'page' && (!c.action || c.action === 'list'));
-const WRITES = new Set(['create', 'update', 'remove', 'reactions', 'flowStart', 'page', 'image', 'select', 'undo', 'reload']);
+const WRITES = new Set(['create', 'update', 'remove', 'reactions', 'flowStart', 'page', 'image', 'select', 'undo', 'reload', 'variables.upsertColor', 'variables.bindPaint']);
+const requiredCapability = new Map([
+  ['variables.list', 'localColorVariables'], ['variables.upsertColor', 'localColorVariables'],
+  ['variables.bindPaint', 'localColorVariables'], ['variables.inspectPaint', 'localColorVariables'],
+  ['prototype.inspect', 'prototypeInspection'],
+]);
 const deletesPage = c => c?.op === 'page' && c.action === 'delete';
 const commandsOf = j => j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds;
 const categoryOf = (action, c) => action === 'cmd-batch' ? 'batch' : pageNavigation(c) ? 'control' : c.op === 'exportImage' ? 'screenshot' : isRead(c) ? 'query' : immediate(c) ? 'control' : 'change';
@@ -365,7 +370,8 @@ export class BridgeCoordinator {
     const label = batch ? short(route?.label) || `Batch ${++this.batchSequence} · ${commands.length} commands` : null;
     if (batch) laneId = 'batch-' + id;
     return new Promise((resolve, reject) => {
-      const j = { id, worker: w, laneId, lease, autoPlan, label, payload, action, bytes, state: 'queued', enqueuedAt: Date.now(), timeoutMs, queueTimeoutMs, resolve, reject, signal: options.signal, onWire: options.onId };
+      const j = { id, worker: w, laneId, lease, autoPlan, label, payload, action, bytes, state: 'queued', enqueuedAt: Date.now(), timeoutMs, queueTimeoutMs, resolve, reject, signal: options.signal, onWire: options.onId,
+        upserts: commands.some(cmd => cmd.op === 'variables.upsertColor') };
       j.abort = () => this.cancel(id, w.workerId, 'client-gone');
       j.timer = setTimeout(() => this.finish(j, bridgeError('queue-timeout', 'Coordinator queue deadline exceeded', { outcome: 'not-started' })), queueTimeoutMs);
       const turnKey = laneOwner(w) + '/' + laneId;
@@ -376,6 +382,10 @@ export class BridgeCoordinator {
     });
   }
   blocked(j) {
+    // Names and IDs can address the same token, including before it has an ID.
+    // Reserve the file's variable writer for the entire ordered batch.
+    if (j.upserts && [...this.jobs.values()].some(other => other !== j && other.upserts &&
+      other.worker.fileKey === j.worker.fileKey && other.state !== 'queued')) return 'waiting-variable-writer';
     for (const id of j.lease?.dependencies || []) {
       const r = this.journal.records.get(id);
       if (r.state === 'released' || r.state === 'held') return 'dependency-failed:' + id;
@@ -399,6 +409,15 @@ export class BridgeCoordinator {
     this.schedulePublish();
     try {
       if (this.quarantined(w)) fail('worker-uncertain', 'A previous job requires reconciliation');
+      const capabilities = w.bridge.diagnostics().identity?.capabilities;
+      for (const [index, cmd] of commandsOf(j).entries()) {
+        const capability = requiredCapability.get(cmd.op);
+        if (capability && !(capabilities?.[capability] >= 1)) fail('unsupported-capability',
+          'The connected worker does not support ' + cmd.op, { index, op: cmd.op, capability, requiredVersion: 1 });
+      }
+      if (j.upserts && [...this.journal.fileHolds.values()].some(h => h.state === 'held' && h.upserts && h.fileKey === (w.fileKey || '*'))) {
+        fail('worker-uncertain', 'A variable write in this file needs reconciliation');
+      }
       // Checked again at its turn: work admitted after it may now target the page.
       for (const c of commandsOf(j)) if (deletesPage(c)) this.refuseBusyPage(w, c.id, j);
       if (j.autoPlan) {
@@ -430,7 +449,7 @@ export class BridgeCoordinator {
       }
       if (j.lease) { j.lease.state = 'running'; this.journal.save(); }
       else if ((j.action === 'cmd' ? [j.payload.cmd] : j.payload.cmds).some(c => WRITES.has(c.op) && !isRead(c) && !pageNavigation(c))) {
-        j.fileHold = { fileKey: w.fileKey || '*', ...(scopeOf(w) ? { scope: scopeOf(w) } : {}), requestId: j.id, label: j.label || short(j.payload.cmd?.op), state: 'running', workerId: w.workerId, sessionEpoch: w.sessionEpoch };
+        j.fileHold = { fileKey: w.fileKey || '*', ...(j.upserts ? { upserts: true } : {}), ...(scopeOf(w) ? { scope: scopeOf(w) } : {}), requestId: j.id, label: j.label || short(j.payload.cmd?.op), state: 'running', workerId: w.workerId, sessionEpoch: w.sessionEpoch };
         this.journal.fileHolds.set(holdKey(j.fileHold), j.fileHold); this.journal.save();
       }
       const scope = j.lease && { ...j.lease, sessionEpoch: w.sessionEpoch, coordinatorEpoch: this.epoch };

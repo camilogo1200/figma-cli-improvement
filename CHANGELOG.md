@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- `variables.list` lists local collections, modes and values. `variables.upsertColor` creates or
+  updates a color in a specific mode. `variables.bindPaint` binds it to a solid fill or stroke,
+  and `variables.inspectPaint` reports the effective mode and resolved color on a node or instance.
+- `prototype.inspect` reads saved reactions, actions and transitions on a page or frame and can
+  include the page's flow starting points. Both prototype and variable listings support pagination.
 - Pages can be deleted: `{"op":"page","action":"delete","id":"…"}`, or
   `figma-ultimate page delete <pageId>`. It is refused, `not-started`, for the file's only page
   (`last-page`) and for a page that other work is using (`page-busy`): a zone on it in flight or

@@ -863,7 +863,7 @@ function paintCoordinator() {
 }
 function observe(msg) {
   if (msg.type === 'identity' || msg.type === 'status') {
-    for (const key of ['file','page','pageId','fileKey','instanceId','protocol','build']) if (key in msg) model.identity[key] = msg[key];
+    for (const key of ['file','page','pageId','fileKey','instanceId','protocol','build','capabilities']) if (key in msg) model.identity[key] = msg[key];
     if (msg.uiMode) setMode(msg.uiMode);
     if (msg.uiTheme) setTheme(msg.uiTheme);
   }
@@ -1046,7 +1046,7 @@ function dialRoad(r) {
   socket.onopen = () => {
     if (r.ws !== socket) return socket.close();
     const i = model.identity;
-    socket.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket: r.ticket, protocol: i.protocol, build: i.build, file: i.file, page: i.page, pageId: i.pageId, fileKey: i.fileKey, instanceId: i.instanceId, busy: r.busy }));
+    socket.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket: r.ticket, protocol: i.protocol, build: i.build, file: i.file, page: i.page, pageId: i.pageId, fileKey: i.fileKey, instanceId: i.instanceId, capabilities: i.capabilities, busy: r.busy }));
     for (const wire of r.outbox.splice(0)) socket.send(wire);
     Object.assign(r, { attempts: 0, state: 'connected', lostAt: null }); paintSoon();
   };

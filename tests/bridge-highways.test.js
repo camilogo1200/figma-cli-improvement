@@ -32,7 +32,7 @@ function setup(t, options = {}) {
 // The plugin end of one highway: it answers the jobs it receives under test control.
 function plugin(port, ticket, { instanceId = 'instance-A', busy = false, fileKey = 'fileA' } = {}) {
   const ws = new WebSocket('ws://127.0.0.1:' + port + '/plugin'), jobs = [];
-  ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket, protocol: PROTOCOL, build: 'test', busy, fileKey, instanceId })));
+  ws.on('open', () => ws.send(JSON.stringify({ type: 'hello', role: 'plugin', ticket, protocol: PROTOCOL, build: 'test', busy, fileKey, instanceId, capabilities: { localColorVariables: 1, prototypeInspection: 1 } })));
   ws.on('message', data => { const m = JSON.parse(data.toString()); if (m.action) jobs.push(m); });
   const send = msg => ws.send(JSON.stringify(msg));
   return { ws, jobs, send,
@@ -76,6 +76,23 @@ test('two highways into one file never queue behind each other at the daemon', a
   assert.equal((await slow).created[0].id, 'node-' + one.p.jobs[0].id);
   const receipts = s.c.snapshot().recent.filter(r => r.highwayId).map(r => [r.op, r.highwayId]);
   assert.deepEqual(receipts, [['create', one.lobby.highwayId], ['find', two.lobby.highwayId]]);
+});
+
+test('file-level variable writes serialize across highways and a held upsert blocks conflicting retries', async t => {
+  const s = setup(t), one = await open(t, s, 'first'), two = await open(t, s, 'second');
+  const upsert = { op: 'variables.upsertColor', collectionName: 'Studio', name: 'Stage', value: '#332A45' };
+  const first = one.client.cmdBatch([upsert]); await until(() => one.p.jobs.length === 1);
+  const second = two.client.cmd(upsert);
+  await until(() => s.c.snapshot().lanes.some(l => l.blockedReason === 'waiting-variable-writer'));
+  assert.equal(two.p.jobs.length, 0);
+  one.p.finish(one.p.jobs[0], { results: [{ success: true, result: { variableId: 'v' } }] }); await first;
+  await until(() => two.p.jobs.length === 1);
+  assert.equal(two.p.jobs[0].cmd.expectedFileKey, 'fileA');
+  two.p.finish(two.p.jobs[0], { error: 'Native write interrupted', outcome: 'partial' });
+  await assert.rejects(second, { outcome: 'partial' });
+  await assert.rejects(one.client.cmd(upsert), { kind: 'worker-uncertain', outcome: 'not-started' });
+  const discover = one.client.cmd({ op: 'variables.list' }); await until(() => one.p.jobs.length === 2);
+  one.p.finish(one.p.jobs[1], { result: { variables: [{ id: 'v' }] } }); assert.equal((await discover).variables.length, 1);
 });
 
 test('an uncertain outcome holds only its own highway; the file and other highways keep writing', async t => {

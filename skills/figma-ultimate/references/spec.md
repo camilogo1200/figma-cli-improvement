@@ -30,6 +30,11 @@ array of up to 128 as one batch. Field names are case-sensitive; most enum value
 | `update` | `{"op":"update","id":"…","spec":{…}}` | the node summary |
 | `reactions` | `{"op":"reactions","id":"<button>","reactions":[{"to":"<frame id>"}]}` | replaces the node's prototype reactions |
 | `flowStart` | `{"op":"flowStart","id":"<frame>","pageId":"…","name":"Checkout"}` | adds a prototype starting point (`reset:true` replaces all) |
+| `prototype.inspect` | `{"op":"prototype.inspect","rootId":"<page or frame>","includeFlowStarts":true}` | frame inventory, saved reactions, flow starts and continuation |
+| `variables.list` | `{"op":"variables.list","type":"COLOR"}` | local collections, modes, raw variable values and continuation |
+| `variables.upsertColor` | `{"op":"variables.upsertColor","collectionName":"Studio","name":"Stage/Background","value":"#332A45"}` | collection, variable and mode IDs, stored color and change flags |
+| `variables.bindPaint` | `{"op":"variables.bindPaint","nodeId":"<component>","property":"fills","paintIndex":0,"variableId":"<variable>"}` | previous and current binding |
+| `variables.inspectPaint` | `{"op":"variables.inspectPaint","nodeId":"<instance>","property":"fills","paintIndex":0}` | actual binding, effective mode, resolved color and paint opacity |
 | `image` | `{"op":"image","base64":"<PNG or JPEG>"}` | `{hash,width,height}` for image fills. Same bytes, same hash |
 | `fonts` | `{"op":"fonts","query":"Roboto"}` | installed families and their styles |
 | `audit` | `{"op":"audit","id":"<frame>"}` | text colours against their real background, small tap targets, overflow |
@@ -42,6 +47,9 @@ Reactions: each entry is `{trigger, to | back, navigation, transition}`. `trigge
 `{"type":"ON_CLICK"}`; `{"type":"ON_KEY_DOWN","keyCodes":[13]}` also works. `back:true` goes back.
 `navigation` defaults to `NAVIGATE` (`OVERLAY`, `SWAP`, `SCROLL_TO`, `CHANGE_TO` are Figma's other
 values). `transition` is a Figma Plugin API transition object or omitted for instant.
+
+For color identity, pagination, inheritance, and fixture verification, see
+[Shared colors and saved prototype links](commands.md#shared-colors-and-saved-prototype-links).
 
 ## create
 

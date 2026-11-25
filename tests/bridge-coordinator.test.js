@@ -9,6 +9,15 @@ import { PROTOCOL } from '../src/lib/bridge-protocol.js';
 
 const flush = () => new Promise(r => setImmediate(r));
 
+test('a worker missing a required capability refuses the whole batch before dispatch or journaling', async t => {
+  const c = setup(t), w = worker(c);
+  const cmds = [{ op: 'update', id: 'node' }, { op: 'variables.bindPaint', nodeId: 'node', variableId: 'v', property: 'fills', paintIndex: 0 }];
+  await assert.rejects(c.dispatch('cmd-batch', { cmds }), {
+    kind: 'unsupported-capability', outcome: 'not-started', details: { index: 1, op: cmds[1].op, capability: 'localColorVariables', requiredVersion: 1 },
+  });
+  assert.equal(w.ws.sent.some(m => m.action === 'cmd-batch'), false); assert.equal(c.journal.fileHolds.size, 0);
+});
+
 test('failed page navigation never journals a file hold and preserves the native diagnostic', async t => {
   const c = setup(t), a = worker(c);
   const job = c.dispatch('cmd', { cmd: { op: 'page', action: 'select', id: 'heavy' } });

@@ -48,6 +48,56 @@ nodes are not allowed in a layout.
 
 ## Status and inspection
 
+### Shared colors and saved prototype links
+
+Send these commands with `figma-ultimate send command.json --file <fileKey>` or pass the same
+object to `forFile(fileKey).cmd(command)`. Each row is a separate request. Replace the example IDs
+with IDs from earlier receipts.
+
+| Operation | Example |
+|---|---|
+| Discover local collections, modes and values | `{"op":"variables.list","type":"COLOR","limit":100}` |
+| Create or update a local color by exact name | `{"op":"variables.upsertColor","collectionName":"Studio","name":"Stage/Background","value":"#332A45"}` |
+| Change one mode by ID | `{"op":"variables.upsertColor","collectionId":"<collection>","variableId":"<variable>","modeId":"<mode>","value":"#13634D"}` |
+| Bind one paint on a main component | `{"op":"variables.bindPaint","nodeId":"<component>","property":"fills","paintIndex":0,"variableId":"<variable>"}` |
+| Inspect the actual instance fill | `{"op":"variables.inspectPaint","nodeId":"<instance>","property":"fills","paintIndex":0}` |
+| Inspect a saved graph | `{"op":"prototype.inspect","rootId":"<page or frame>","includeFlowStarts":true,"limit":250}` |
+
+`variables.list` accepts an optional `collectionId` and resolved `type`. Each page includes the
+collection and mode metadata needed to interpret its variables. Values retain native alias objects.
+`variables.upsertColor` accepts six- or eight-digit hex or normalized numeric `{r,g,b,a}`. Omitting
+`modeId` uses the collection default. The receipt includes the IDs, stored value, values by mode,
+`createdCollection`, `createdVariable` and `changed`. An identical retry returns the same IDs
+and `changed: false`. IDs must exist. Names must match exactly within their scope.
+
+`variables.bindPaint` addresses a zero-based solid fill or stroke. Binding a component lets its
+instances inherit the change. Binding an instance writes its own override. The receipt identifies
+the previous and current variable IDs. Style-controlled paints, mixed text ranges, and unsupported
+paint types produce typed errors. `variables.inspectPaint` reports the effective mode, resolved
+RGBA, eight-digit hex and separate paint opacity. It returns literal values on unbound solids and
+null color fields on gradients and images.
+
+`prototype.inspect` reads native reactions, ordered actions and optional flow starts from the
+containing page. Trigger and transition numbers retain native units (durations in seconds).
+The page inventory includes visible direct-child frames. A frame query includes its own reactions
+and descendants. Hidden sources retain their visibility flag, and nodes outside a screen can have
+a null `sourceFrameId`. A transparent hotspot can be visible. A `BACK` or conditional action
+keeps its native structure. Flow starts on a frame query describe the whole containing page.
+
+Both readers accept `limit` from 1 to 1,000. Follow `nextCursor` with the same options until null,
+including after an empty result. Merge frame and collection metadata by ID. Prototype reads also
+stop at 500 traversal steps or a 192 KiB record budget per response. A single record too large
+to page returns `result-too-large`. Cursors are single-use, expire after five minutes, and up to
+16 are retained by the plugin. On `stale-cursor`, discard accumulated pages and restart without
+`cursor`. Page changes during prototype inspection can invalidate the scan.
+
+The maintainer fixture runs with `node tests/live/variables-prototype.mjs <disposable-file-key> <empty-page-id>`
+from the checkout. It creates two screens and a unique local collection, samples decoded exports,
+restores the captured color, and checks the saved click graph through a fresh connection. Use the
+Desktop flow on the fixture page to check presentation playback.
+
+### Bridge status
+
 | Command | Output |
 |---|---|
 | `figma-ultimate doctor` | every check, with the fix for each problem (exit 1 when something blocks work) |

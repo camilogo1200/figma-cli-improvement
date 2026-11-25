@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { LIMITS } from '../src/lib/bridge-protocol.js';
 import { geometricFixture } from './live/navigation-stress.mjs';
+import { verifyFixtureGraph } from './live/variables-prototype.mjs';
 
 const source = readFileSync(process.env.FIGMA_ULTIMATE_PLUGIN_TEST_SOURCE || new URL('../plugin/code.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -69,6 +70,219 @@ function harness({ autoYield = true, onYield, loadFontAsync = async () => {}, cl
   return h;
 }
 const many = count => ({ name: 'new-root', children: Array.from({ length: count }, (_, i) => ({ name: 'child-' + i })) });
+
+function variableHarness() {
+  const collections = [], variables = [], writes = [];
+  const api = {
+    async getLocalVariableCollectionsAsync() { return collections.filter(c => !c.remote); },
+    async getLocalVariablesAsync(type) { return variables.filter(v => !v.remote && (!type || v.resolvedType === type)); },
+    async getVariableCollectionByIdAsync(id) { return collections.find(c => c.id === id); },
+    async getVariableByIdAsync(id) { return variables.find(v => v.id === id); },
+    createVariableCollection(name) {
+      const id = 'collection-' + collections.length, defaultModeId = id + '-default';
+      const c = { name, id, defaultModeId, modes: [{ modeId: defaultModeId, name: 'Mode 1' }] };
+      collections.push(c); return c;
+    },
+    createVariable(name, collection, resolvedType) {
+      assert.ok(collections.includes(collection));
+      const v = { name, resolvedType, id: 'var-' + variables.length, variableCollectionId: collection.id, valuesByMode: {},
+        setValueForMode(mode, color) {
+          writes.push(this.id);
+          this.valuesByMode[mode] = Object.fromEntries(Object.entries(color).map(([key, n]) => [key, Math.fround(n)]));
+        },
+        resolveForConsumer(node) {
+          return { resolvedType, value: this.valuesByMode[node.resolvedVariableModes?.[collection.id] || collection.defaultModeId] };
+        } };
+      variables.push(v); return v;
+    },
+    setBoundVariableForPaint(paint, field, variable) {
+      return { ...paint, boundVariables: { [field]: { type: 'VARIABLE_ALIAS', id: variable.id } } };
+    },
+  };
+  const h = harness({ extend(figma) { figma.variables = api; figma.mixed = Symbol('mixed'); } });
+  return { ...h, api, collections, variables, writes, run: cmd => h.done(h.send(cmd)) };
+}
+const stageColor = { op: 'variables.upsertColor', collectionName: 'Studio', name: 'Stage/Background', value: '#332A45' };
+const flatPaint = () => ({ type: 'SOLID', color: { r: 1, g: 0, b: 0 }, opacity: 0.4, visible: true, blendMode: 'MULTIPLY' });
+
+test('file color writes use native IDs, round-trip alpha, preserve other modes and discover aliases', async () => {
+  const h = variableHarness(), first = (await h.run(stageColor)).result;
+  assert.ok(first.createdVariable && first.createdCollection && first.changed);
+  assert.equal((await h.run(stageColor)).result.changed, false);
+  assert.equal(h.writes.length, 1);
+  const c = h.collections[0], v = h.variables[0];
+  c.modes.push({ modeId: 'night', name: 'Night' });
+  const second = (await h.run({ op: stageColor.op, variableId: first.variableId, collectionId: c.id, modeId: 'night', value: '#11223380' })).result;
+  assert.equal(second.changed, true); assert.equal(second.createdCollection, false);
+  assert.equal(second.value.a, Math.fround(128 / 255));
+  assert.deepEqual(second.valuesByMode[first.modeId], first.value);
+  const alias = h.api.createVariable('Semantic', c, 'COLOR');
+  alias.valuesByMode.night = { type: 'VARIABLE_ALIAS', id: v.id };
+  h.api.createVariable('Numeric', c, 'FLOAT');
+  const query = { op: 'variables.list', type: 'COLOR', collectionId: c.id, limit: 1 };
+  const list = (await h.run(query)).result;
+  assert.equal(list.variables[0].name, 'Stage/Background');
+  assert.deepEqual(list.collections, [c]);
+  assert.equal((await h.run({ ...query, type: 'FLOAT', cursor: list.nextCursor })).kind, 'stale-cursor');
+  const next = (await h.run({ ...query, cursor: list.nextCursor })).result;
+  assert.equal(next.nextCursor, null); assert.deepEqual(next.variables[0].valuesByMode.night, alias.valuesByMode.night);
+  assert.equal((await h.run({ ...query, cursor: list.nextCursor })).kind, 'stale-cursor');
+});
+
+test('invalid color identities and values fail before any mutation; partial creation returns IDs', async () => {
+  const h = variableHarness(), c = h.api.createVariableCollection('Studio'), other = h.api.createVariableCollection('Other');
+  const num = h.api.createVariable('Number', c, 'FLOAT'), color = h.api.createVariable('Duplicate', c, 'COLOR');
+  h.api.createVariable('Duplicate', c, 'COLOR');
+  for (const [overrides, kind] of [
+    [{ value: '#11x233' }, 'invalid-color'], [{ value: { r: 0, g: 0, b: 0, a: 2 } }, 'invalid-color'],
+    [{ collectionName: 'New', modeId: 'night' }, 'mode-not-in-collection'], [{ collectionId: 'absent' }, 'collection-not-found'],
+    [{ variableId: 'missing', collectionName: 'New' }, 'variable-not-found'], [{ variableId: num.id }, 'variable-type-mismatch'],
+    [{ name: num.name }, 'variable-type-mismatch'], [{ name: color.name }, 'ambiguous-name'],
+    [{ variableId: color.id, name: 'Mismatch' }, 'identity-conflict'],
+    [{ variableId: color.id, name: color.name, collectionName: 'Other', collectionId: other.id }, 'wrong-collection'],
+    [{ collectionId: other.id }, 'identity-conflict'],
+  ]) {
+    const response = await h.run({ ...stageColor, ...overrides });
+    assert.equal(response.kind, kind, JSON.stringify(response)); assert.equal(response.outcome, 'not-started');
+  }
+  h.api.createVariableCollection('Studio');
+  assert.equal((await h.run(stageColor)).kind, 'ambiguous-name');
+  assert.equal(h.collections.length, 3); assert.equal(h.variables.length, 3); assert.equal(h.writes.length, 0);
+  const original = h.api.createVariable.bind(h.api);
+  h.api.createVariable = (...args) => { const v = original(...args); v.setValueForMode = () => { throw Object.freeze(Error('Native write rejected')); }; return v; };
+  const failed = await h.run({ ...stageColor, collectionName: 'New' });
+  assert.equal(failed.outcome, 'partial'); assert.equal(failed.error, 'Native write rejected');
+  assert.equal(failed.details.collectionId, h.collections.at(-1).id); assert.equal(failed.details.variableId, h.variables.at(-1).id);
+  assert.ok(failed.details.createdCollection && failed.details.createdVariable);
+});
+
+test('one component binding is read from each actual consumer, including modes and overrides', async () => {
+  const h = variableHarness(), component = h.node('COMPONENT'), inherited = h.node('INSTANCE'), override = h.node('INSTANCE');
+  for (const node of [component, inherited, override]) h.page.appendChild(node);
+  const gradient = { type: 'GRADIENT_LINEAR', gradientStops: [] };
+  component.fills = [gradient, flatPaint()]; component.strokes = [flatPaint()];
+  Object.defineProperty(inherited, 'fills', { get: () => component.fills });
+  for (const i of [inherited, override]) i.getMainComponentAsync = async () => component;
+  override.fills = [gradient, flatPaint()];
+  const token = (await h.run(stageColor)).result;
+  const bind = { op: 'variables.bindPaint', variableId: token.variableId, nodeId: component.id, property: 'fills', paintIndex: 1 };
+  const inspect = { op: 'variables.inspectPaint', nodeId: inherited.id, property: 'fills', paintIndex: 1 };
+  assert.equal((await h.run(bind)).result.previousVariableId, null);
+  assert.equal((await h.run(bind)).result.changed, false);
+  assert.equal(component.fills[0], gradient); assert.deepEqual(component.strokes, [flatPaint()]);
+  assert.deepEqual(component.fills[1], { ...flatPaint(), boundVariables: { color: { type: 'VARIABLE_ALIAS', id: token.variableId } } });
+  for (const [value, hex] of [['#13634D', '#13634DFF'], [token.value, '#332A45FF']]) {
+    await h.run({ ...stageColor, value });
+    const read = (await h.run(inspect)).result;
+    assert.equal(read.mainComponentId, component.id); assert.equal(read.boundVariableId, token.variableId);
+    assert.equal(read.effectiveModeId, token.modeId); assert.equal(read.resolvedHex, hex); assert.equal(read.paintOpacity, 0.4);
+    const local = (await h.run({ ...inspect, nodeId: override.id })).result;
+    assert.equal(local.boundVariableId, null); assert.equal(local.effectiveModeId, null); assert.equal(local.resolvedHex, '#FF0000FF');
+  }
+  h.collections[0].modes.push({ modeId: 'alt', name: 'Alternate' });
+  await h.run({ ...stageColor, modeId: 'alt', value: '#11223380' }); inherited.resolvedVariableModes = { [token.collectionId]: 'alt' };
+  assert.equal((await h.run(inspect)).result.resolvedHex, '#11223380');
+  assert.equal((await h.run({ ...bind, property: 'strokes', paintIndex: 0 })).result.changed, true);
+  assert.equal((await h.run({ ...inspect, paintIndex: 0 })).result.resolvedRgba, null);
+  assert.equal((await h.run({ ...bind, paintIndex: 0 })).kind, 'unsupported-paint-type');
+  assert.equal((await h.run({ ...bind, paintIndex: -1 })).kind, 'paint-index-out-of-range');
+  override.fillStyleId = 'S:style';
+  assert.equal((await h.run({ ...bind, nodeId: override.id })).kind, 'style-controlled-paint');
+  delete override.fillStyleId; override.fills = h.figma.mixed; override.type = 'TEXT';
+  assert.equal((await h.run({ ...bind, nodeId: override.id })).kind, 'mixed-paints');
+  assert.equal((await h.run({ ...inspect, nodeId: override.id })).kind, 'mixed-paints');
+  h.variables.length = 0;
+  assert.equal((await h.run(inspect)).kind, 'unresolved-variable');
+});
+
+test('prototype inspection follows saved native actions and reports visibility and screen ownership across pages', async () => {
+  const h = harness(), other = h.node('PAGE'); h.figma.root.appendChild(other);
+  const child = (parent, type, name) => { const n = h.node(type); parent.appendChild(n); n.name = name; return n; };
+  let loads = 0;
+  other.loadAsync = async () => { loads++; };
+  const outfit = child(other, 'FRAME', 'Outfit'), shirt = child(other, 'FRAME', 'Shirt'), empty = child(other, 'FRAME', 'Empty');
+  const system = child(other, 'SECTION', 'Library'); child(system, 'FRAME', 'Swatches');
+  const hidden = child(outfit, 'FRAME', 'Hidden'); hidden.visible = false;
+  const hiddenHotspot = child(hidden, 'RECTANGLE', 'Duplicate'), hotspot = child(outfit, 'RECTANGLE', 'Choose shirt');
+  const back = child(shirt, 'RECTANGLE', 'Back'); hotspot.opacity = 0;
+  const key = { type: 'ON_KEY_DOWN', device: 'KEYBOARD', keyCodes: [13] };
+  const transition = { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.36 };
+  const saved = await h.done(h.send({ op: 'reactions', id: hotspot.id, reactions: [{ to: shirt.id, transition }, { trigger: key, back: true }] }));
+  assert.equal(saved.result.reactions, 2);
+  await h.done(h.send({ op: 'flowStart', pageId: other.id, id: outfit.id, name: 'Desktop' }));
+  back.reactions = [{ trigger: { type: 'ON_DRAG' }, action: { type: 'NODE', navigation: 'NAVIGATE', destinationId: outfit.id } }];
+  hiddenHotspot.reactions = [{ trigger: { type: 'AFTER_TIMEOUT', timeout: 0.75 },
+    actions: [{ type: 'CONDITIONAL', conditionalBlocks: [{ actions: [{ type: 'BACK' }] }] }, { type: 'FUTURE_ACTION', nativeField: 9 }] }];
+  const all = async rootId => {
+    let cursor; const frames = [], reactions = [], starts = [];
+    do {
+      const response = await h.done(h.send({ op: 'prototype.inspect', rootId, includeFlowStarts: true, limit: 1, cursor }));
+      assert.equal(response.error, undefined, response.error); assert.equal(response.result.pageId, other.id);
+      const page = response.result; assert.ok(page.reactions.length <= 1);
+      frames.push(...page.frames); starts.push(...page.flowStartingPoints); reactions.push(...page.reactions); cursor = page.nextCursor;
+    } while (cursor);
+    return { frames, reactions, starts };
+  };
+  const { frames, reactions, starts } = await all(other.id);
+  assert.deepEqual(frames.map(f => f.id), [outfit.id, shirt.id, empty.id]);
+  assert.deepEqual(starts, [{ nodeId: outfit.id, name: 'Desktop' }]);
+  assert.deepEqual(reactions.map(r => [r.sourceNodeId, r.reactionIndex, r.effectiveVisible, r.sourceFrameId]), [
+    [hiddenHotspot.id, 0, false, outfit.id], [hotspot.id, 0, true, outfit.id], [hotspot.id, 1, true, outfit.id], [back.id, 0, true, shirt.id],
+  ]);
+  assert.deepEqual(reactions[0].actions, hiddenHotspot.reactions[0].actions);
+  assert.deepEqual(reactions[1].actions[0].transition, transition); assert.equal(reactions[1].actions[0].destinationId, shirt.id);
+  assert.deepEqual(reactions[2].trigger, key); assert.deepEqual(reactions[2].actions, [{ type: 'BACK' }]);
+  assert.deepEqual(reactions[3].actions, [back.reactions[0].action]); assert.equal('action' in reactions[3], false);
+  const nested = await all(hidden.id);
+  assert.equal(nested.reactions[0].sourceFrameId, outfit.id); assert.deepEqual(nested.starts, starts);
+  assert.equal(loads, 3); assert.equal(h.figma.currentPage, h.page); assert.equal(h.figma.skipInvisibleInstanceChildren, true);
+});
+
+test('bounded inspections continue empty and byte-limited slices; page edits and expiry invalidate cursors', async t => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  const h = harness(); let listener;
+  h.page.on = (type, fn) => { assert.equal(type, 'nodechange'); listener = fn; };
+  h.page.off = (type, fn) => { assert.equal(listener, fn); listener = null; };
+  const frame = h.node('FRAME'); h.page.appendChild(frame);
+  for (let i = 0; i < 510; i++) frame.appendChild(h.node('RECTANGLE'));
+  const leaf = frame.children.at(-1);
+  leaf.reactions = [0, 1].map(i => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'FUTURE', payload: 'x'.repeat(110000), index: i }] }));
+  const query = { op: 'prototype.inspect', rootId: h.page.id };
+  const read = (extra = {}) => h.done(h.send({ ...query, ...extra }));
+  let page = (await read()).result;
+  assert.ok(page.nextCursor); assert.deepEqual(page.reactions, []);
+  listener(); assert.equal((await read({ cursor: page.nextCursor })).kind, 'stale-cursor'); assert.equal(listener, null);
+  page = (await read()).result;
+  t.mock.timers.tick(300001);
+  assert.equal((await read({ cursor: page.nextCursor })).kind, 'stale-cursor'); assert.equal(listener, null);
+  page = (await read()).result; const indices = [];
+  while (page.nextCursor) {
+    page = (await read({ cursor: page.nextCursor })).result; assert.ok(page.reactions.length <= 1);
+    indices.push(...page.reactions.map(r => r.reactionIndex));
+  }
+  assert.deepEqual(indices, [0, 1]); assert.equal(listener, null);
+});
+
+test('a rejected reaction retains the modern and legacy host errors and the earlier batch receipt', async () => {
+  const h = harness(), target = h.node('FRAME'); h.page.appendChild(target);
+  target.setReactionsAsync = async rs => { throw Object.freeze(Error(rs[0].actions ? 'Bad transition at reactions[1].actions[0]' : 'not an object')); };
+  h.figma.ui.onmessage({ id: 'write-graph', type: 'cmd-batch', cmds: [
+    { op: 'flowStart', pageId: h.page.id, id: target.id }, { op: 'reactions', id: target.id, reactions: [{ back: true }, { to: 'unknown' }] }, { op: 'info' },
+  ] });
+  const batch = await h.done('write-graph');
+  assert.equal(batch.outcome, 'partial'); assert.ok(batch.results[0].success); assert.equal(batch.results[2].kind, 'skipped');
+  const error = batch.results[1]; assert.equal(error.index, 1); assert.equal(error.kind, 'reaction-write-failed');
+  assert.equal(error.details.sourceNodeId, target.id); assert.equal(error.details.reactionIndex, 1); assert.equal(error.details.actionIndex, 0);
+  assert.equal(error.details.destinationId, 'unknown'); assert.match(error.error, /Bad transition/); assert.equal(error.details.legacyCause, 'not an object');
+});
+
+test('fixture verifier identifies the missing click or dangling target by frame, control and destination', () => {
+  const frames = [{ id: '1', name: 'Outfit' }, { id: '2', name: 'Shirt' }], controls = [{ id: '3', name: 'Choose shirt' }, { id: '4', name: 'Back' }];
+  const graph = { frames, starts: [{ nodeId: '1', name: 'Desktop' }], reactions: [] };
+  assert.throws(() => verifyFixtureGraph(frames, controls, graph), /Missing Outfit \/ Choose shirt ON_CLICK → 2/);
+  graph.reactions.push({ sourceNodeId: '3', sourceFrameId: '1', trigger: { type: 'ON_CLICK' }, reactionIndex: 0, effectiveVisible: true, actions: [{ destinationId: 'gone' }] });
+  assert.throws(() => verifyFixtureGraph(frames, controls, graph), /Dangling destination gone for Outfit \/ Choose shirt ON_CLICK → 2/);
+});
 
 test('page navigation preloads a heavy page and has no ten-second yield deadline', async t => {
   t.mock.timers.enable({ apis: ['Date'] });
